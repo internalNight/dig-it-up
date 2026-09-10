@@ -120,7 +120,7 @@ void ASandHUD::DrawHUD()
             Margin, PanelY, 270.0f * UiScale, 212.0f * UiScale);
         if(Machine)
         {
-            DrawText(FString::Printf(TEXT("Drum %.1f rpm  |  Chain %.2f m/s  |  Load %.1f Nm"),Machine->GetDrumRPM(),Machine->GetConveyorSpeed(),Machine->GetLoadTorque()),
+            DrawText(FString::Printf(TEXT("Drum %.1f rpm  |  Chain %.2f m/s  |  Load %.1f / 240 Nm"),Machine->GetDrumRPM(),Machine->GetConveyorSpeed(),Machine->GetLoadTorque()),
                 FLinearColor(1,.8f,.3f),Margin,Canvas->SizeY-40*UiScale,Font,UiScale);
         }
         const TCHAR* Lines[] =
@@ -130,7 +130,7 @@ void ASandHUD::DrawHUD()
             TEXT("SPACE       Brake"),
             Machine ? TEXT("Q / E       Cutter raise / lower") : TEXT("Q / E       Boom up / down"),
             Machine ? TEXT("T / G       Motor on-off / reverse") : TEXT("R / F       Stick in / out"),
-            Machine ? TEXT("C           Internal / outside view") : TEXT("T / G       Bucket curl / dump"),
+            Machine ? TEXT("C  View     P  Debug material points") : TEXT("T / G       Bucket curl / dump"),
             TEXT("H           Hide / show this help"),
             TEXT("ESC         Quit game")
         };

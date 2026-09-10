@@ -2,6 +2,8 @@
 
 2026-09-10，基于 `7b5e0a7`。这是可运行的机构试验原型，尚未证明掘进机能够比挖掘机更快完成完整关卡。
 
+后续动力、导料及显示修正见 [TransportFix.md](TransportFix.md)。下方输送数字保留第一版历史结果；最新对照见 `Saved/TransportFixAcceptance/results.json`。球形调试点现在默认关闭，可按 P 查看。
+
 ## 启动
 
 本机已使用 UE 5.8.2、VS 2026 Community / MSVC 14.51 和 Windows SDK 10.0.26100 编译 Development Editor。

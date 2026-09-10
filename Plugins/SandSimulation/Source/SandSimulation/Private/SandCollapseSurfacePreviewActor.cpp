@@ -130,7 +130,7 @@ void ASandCollapseSurfacePreviewActor::Tick(const float DeltaSeconds)
     }
     const uint32 FramesToAdvance = static_cast<uint32>(FMath::Clamp(
         FMath::FloorToInt(SimulationAccumulatorSeconds / FixedFrameSeconds), 1,
-            FParse::Param(FCommandLine::Get(),TEXT("SandRoadheaderBench")) ? 1 : 2));
+            Cast<ASandRoadheaderPawn>(Excavator.Get()) || FParse::Param(FCommandLine::Get(),TEXT("SandRoadheaderBench")) ? 1 : 2));
     SimulationAccumulatorSeconds -= FramesToAdvance * FixedFrameSeconds;
     bSimulationStepInFlight = true;
 
@@ -371,7 +371,8 @@ void ASandCollapseSurfacePreviewActor::Tick(const float DeltaSeconds)
                 for (const Sand::MPM::FParticleData& Particle : Particles)
                 {
                     const FVector3f Position(Particle.PositionAndMass);
-                    Positions.Add(Position);
+                    auto* Machine=Cast<ASandRoadheaderPawn>(WeakExcavator.Get());
+                    if(!Machine || !Machine->IsConveyorRegion(Position)) Positions.Add(Position);
                     // A load above a track is not load-bearing terrain.
                     if (Particle.BucketLocalAndCarried.W < 0.5f)
                     {

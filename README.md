@@ -8,6 +8,10 @@ it does not capture or teleport sand. Press T for motors, G to reverse, Q/E to
 raise/lower the cutting assembly and C for the internal view. `PlayRoadheaderBench.cmd`
 opens the finer isolated transport experiment.
 
+The follow-up [transport fix](Docs/TransportFix.md) adds a 240 Nm low-speed cutter
+drive, guide plates and a local conveyed-sand surface. Material-point sphere
+markers are now opt-in with P. Physics still uses the same conserved particle set.
+
 The new default full-sandbox grid is 5 cm / 300,000 material points / 600 Hz
 internal steps. `-Quality Fine` selects 3.125 cm / 1,228,800 points / 900 Hz;
 this is substantially slower on the tested RTX 4060 Ti 8 GB. The 2.5 cm option

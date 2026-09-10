@@ -1,6 +1,8 @@
 #include "SandRoadheaderPawn.h"
 #include "SandMPMSolver.h"
 #include "SandMachineKinematics.h"
+#include "SandMachineDrive.h"
+#include "SandSurfacePreviewActor.h"
 #include "Components/BoxComponent.h"
 #include "Components/StaticMeshComponent.h"
 #include "Components/InstancedStaticMeshComponent.h"
@@ -28,7 +30,7 @@ ASandRoadheaderPawn::ASandRoadheaderPawn()
     static ConstructorHelpers::FObjectFinder<UMaterialInterface> Orange(TEXT("/Engine/TemplateResources/MI_Template_BaseOrange.MI_Template_BaseOrange"));
     // First two entries are existing track colliders; all other physical boxes
     // have a matching visible part. No invisible intake/capture volume.
-    for(int32 I=2; I<7+DrumCount+BladeCount; ++I)
+    for(int32 I=2; I<28; ++I)
     {
         auto* M=CreateDefaultSubobject<UStaticMeshComponent>(*FString::Printf(TEXT("MachinePart%d"),I));
         M->SetupAttachment(ChassisBody);
@@ -45,7 +47,10 @@ ASandRoadheaderPawn::ASandRoadheaderPawn()
     VisibleMaterialPoints->SetMaterial(0,Steel.Object);
     VisibleMaterialPoints->SetCollisionEnabled(ECollisionEnabled::NoCollision);
     VisibleMaterialPoints->SetCanEverAffectNavigation(false);
-    DriveForce=2100;
+    // Prototype carrier, 120 N maximum longitudinal drive force.
+    // UE forces use kg*cm/s^2. This is a tuning assumption, not measured hardware.
+    DriveForce=12000;
+    SteeringTorque=120000;
 }
 
 void ASandRoadheaderPawn::BeginPlay()
@@ -55,6 +60,18 @@ void ASandRoadheaderPawn::BeginPlay()
     bAutoTest=FParse::Param(FCommandLine::Get(),TEXT("SandRoadheaderTest"));
     bStopTest=FParse::Param(FCommandLine::Get(),TEXT("SandRoadheaderStopped"));
     bRunning=bAutoTest && !bStopTest;
+    bDebugPoints=FParse::Param(FCommandLine::Get(),TEXT("SandDebugPoints"));
+    bChainStopped=FParse::Param(FCommandLine::Get(),TEXT("SandChainStopped"));
+    bCutTest=bAutoTest && FParse::Param(FCommandLine::Get(),TEXT("SandCutTest"));
+    ConveyorSurface=GetWorld()->SpawnActorDeferred<ASandSurfacePreviewActor>(ASandSurfacePreviewActor::StaticClass(),FTransform::Identity,this);
+    ConveyorSurface->bBuildOnBeginPlay=false;
+    ConveyorSurface->bAllowAutomaticCapture=false;
+    ConveyorSurface->VoxelSizeMeters=0.015f;
+    ConveyorSurface->KernelRadiusMeters=0.06f;
+    ConveyorSurface->IsoDensity=0.32f;
+    ConveyorSurface->FinishSpawning(FTransform::Identity);
+    ConveyorSurface->SetActorHiddenInGame(true);
+    VisibleMaterialPoints->SetVisibility(bDebugPoints);
     BoomPivot->SetVisibility(false,true);
     for(auto* M : {ChassisVisual.Get(),UpperDeckVisual.Get(),CabVisual.Get(),WindshieldVisual.Get(),CounterweightVisual.Get()})
         M->SetVisibility(false);
@@ -70,7 +87,7 @@ void ASandRoadheaderPawn::BeginPlay()
     if(bBench)
     {
         Sand::MPM::FToolColliderState T; BuildPhysicalTool(T,0);
-        for(int32 I=25;I<(int32)T.ColliderCount;++I)
+        for(int32 I=28;I<(int32)T.ColliderCount;++I)
         {
             auto* V=NewObject<UStaticMeshComponent>(this);
             V->SetStaticMesh(LoadObject<UStaticMesh>(nullptr,TEXT("/Engine/BasicShapes/Cube.Cube")));
@@ -99,6 +116,11 @@ void ASandRoadheaderPawn::Tick(float Dt)
     auto* PC=Cast<APlayerController>(GetController());
     if(!PC) return;
     if(PC->WasInputKeyJustPressed(EKeys::Escape)) PC->ConsoleCommand(TEXT("quit"));
+    if(PC->WasInputKeyJustPressed(EKeys::P))
+    {
+        bDebugPoints=!bDebugPoints;
+        VisibleMaterialPoints->SetVisibility(bDebugPoints);
+    }
     if(PC->WasInputKeyJustPressed(EKeys::T)) bRunning=!bRunning;
     if(PC->WasInputKeyJustPressed(EKeys::G)) Direction=-Direction;
     if(PC->WasInputKeyJustPressed(EKeys::C))
@@ -115,6 +137,8 @@ void ASandRoadheaderPawn::Tick(float Dt)
     {
         const float Input=(PC->IsInputKeyDown(EKeys::Q)?1.0f:0.0f)-(PC->IsInputKeyDown(EKeys::E)?1.0f:0.0f);
         HeadPitch=FMath::Clamp(HeadPitch+Input*Dt*12,-25.0f,18.0f);
+        if(bCutTest)
+            HeadPitch=-FMath::Min(15.0f,PhysicalTime*4.0f);
         ToolMount->SetRelativeRotation(FRotator(HeadPitch,0,0));
     }
     UpdateMachineVisuals();
@@ -162,11 +186,17 @@ void ASandRoadheaderPawn::BuildPhysicalTool(Sand::MPM::FToolColliderState& Tool,
         C.HalfExtentsMeters=FVector3f(.018f,.205f,.028f);
         C=SampleMachineCollider(C,Seconds);
     }
+    // Enclose the sides and top of the drum, leaving the front intake and
+    // rear-to-tray route open. Guides return thrown material by solid contact.
+    Box(FVector3f(.50f,-.26f,.07f),FVector3f(.22f,.02f,.18f));
+    Box(FVector3f(.50f,.26f,.07f),FVector3f(.22f,.02f,.18f));
+    Box(FVector3f(.48f,0,.265f),FVector3f(.24f,.24f,.015f));
     // Motion is physical contact only; never enable the excavator carrier.
     for(uint32 I=0;I<Tool.ColliderCount;++I)
     {
         auto& C=Tool.Colliders[I];
         const FVector3f V=bBench?FVector3f::ZeroVector:FVector3f(ChassisBody->GetPhysicsLinearVelocityAtPoint(FVector(C.CenterMeters)*100)/100.0);
+        C.SeparationSpeedLimit=0.15f;
         C.BaseVelocity=V;
         C.LinearVelocityMetersPerSecond+=V;
     }
@@ -205,6 +235,12 @@ void ASandRoadheaderPawn::UpdateMachineVisuals()
     }
 }
 
+bool ASandRoadheaderPawn::IsConveyorRegion(const FVector3f& Position) const
+{
+    const FVector L=ToolMount->GetComponentTransform().InverseTransformPosition(FVector(Position)*100);
+    return L.X>-72 && L.X<32 && FMath::Abs(L.Y)<23 && L.Z>1.5 && L.Z<20;
+}
+
 void ASandRoadheaderPawn::CompletePhysicalStep(const Sand::MPM::FToolInteractionResult& R,
     float Dt,const TArray<Sand::MPM::FParticleData>& Particles)
 {
@@ -224,19 +260,16 @@ void ASandRoadheaderPawn::CompletePhysicalStep(const Sand::MPM::FToolInteraction
     // Advance angles using exactly the speed submitted to the completed GPU step.
     DrumAngle=FMath::Fmod(DrumAngle-DrumOmega*Dt,2*PI);
     ChainDistance=FMath::Fmod(ChainDistance+ChainSpeed*Dt,Loop);
-    // Bounded motor torque/force, with inertial load response and a holding brake.
-    const float TargetOmega=bRunning?Direction*5.0f:0;
-    const float TargetChain=bRunning?Direction*.45f:0;
-    const float MotorTorque=FMath::Clamp((TargetOmega-DrumOmega)*6.0f,-24.0f,24.0f);
-    const float MotorForce=FMath::Clamp((TargetChain-ChainSpeed)*240.0f,-140.0f,140.0f);
-    DrumOmega=FMath::Clamp(DrumOmega+(MotorTorque*Dt-DrumImpulse)/2.0f,-6.0f,6.0f);
-    ChainSpeed=FMath::Clamp(ChainSpeed+(MotorForce*Dt-ChainImpulse)/25.0f,-.6f,.6f);
-    if(!bRunning)
-    {
-        // Finite Coulomb holding brakes: dissipate momentum, never drive sand.
-        DrumOmega=FMath::Sign(DrumOmega)*FMath::Max(0.0f,FMath::Abs(DrumOmega)-150.0f*Dt/2.0f);
-        ChainSpeed=FMath::Sign(ChainSpeed)*FMath::Max(0.0f,FMath::Abs(ChainSpeed)-500.0f*Dt/25.0f);
-    }
+    // Low-speed, high-torque geared drives. An anti-rollback clutch prevents
+    // uncommanded reversal under overload; excess load can still stall the drum.
+    DrumOmega=DrivenSpeed(DrumOmega,bRunning?Direction*1.8f:0,DrumImpulse,Dt,12,180,240);
+    ChainSpeed=DrivenSpeed(ChainSpeed,bRunning && !bChainStopped?Direction*.30f:0,ChainImpulse,Dt,50,1000,500);
+    if(bRunning) { DrumOmega=Direction*FMath::Max(0.0f,Direction*DrumOmega); }
+    if(bRunning && !bChainStopped) { ChainSpeed=Direction*FMath::Max(0.0f,Direction*ChainSpeed); }
+    if(!bRunning) DrumOmega=BrakeSpeed(DrumOmega,Dt,12,300);
+    if(!bRunning || bChainStopped) ChainSpeed=BrakeSpeed(ChainSpeed,Dt,50,1000);
+    DrumOmega=FMath::Clamp(DrumOmega,-2.2f,2.2f);
+    ChainSpeed=FMath::Clamp(ChainSpeed,-.4f,.4f);
     PhysicalTime+=Dt;
     UpdateMachineVisuals();
     if(!Particles.IsEmpty())
@@ -246,12 +279,14 @@ void ASandRoadheaderPawn::CompletePhysicalStep(const Sand::MPM::FToolInteraction
         // They have no collision, mass or independent particle simulation.
         VisibleMaterialPoints->ClearInstances();
         TArray<FTransform> PointTransforms;
+        TArray<FVector3f> ConveyorPositions;
         if(TransportHistory.Num()!=Particles.Num()) TransportHistory.Init(0,Particles.Num());
         for(int32 I=0;I<Particles.Num();++I)
         {
             const auto& P=Particles[I];
             const FVector L=ToolMount->GetComponentTransform().InverseTransformPosition(FVector(FVector3f(P.PositionAndMass))*100);
-            if(L.X>-75 && L.X<76 && FMath::Abs(L.Y)<30 && L.Z>0 && L.Z<40)
+            if(IsConveyorRegion(FVector3f(P.PositionAndMass))) ConveyorPositions.Add(FVector3f(P.PositionAndMass));
+            if(bDebugPoints && L.X>-75 && L.X<76 && FMath::Abs(L.Y)<30 && L.Z>0 && L.Z<40)
             {
                 const float Diameter=0.65f*FMath::Pow(P.VelocityAndVolume.W,1.0f/3.0f);
                 PointTransforms.Add(FTransform(FQuat::Identity,FVector(FVector3f(P.PositionAndMass))*100,FVector(Diameter)));
@@ -264,6 +299,18 @@ void ASandRoadheaderPawn::CompletePhysicalStep(const Sand::MPM::FToolInteraction
             }
         }
         VisibleMaterialPoints->AddInstances(PointTransforms,false,true,false);
+        ConveyorSurface->SetActorHiddenInGame(bDebugPoints || ConveyorPositions.IsEmpty());
+        if(!bDebugPoints && !ConveyorPositions.IsEmpty())
+        {
+            // Weight by represented volume, not visible marker count. No extra
+            // physics particles are created by this local surface reconstruction.
+            ConveyorSurface->ParticleDensityWeight=Particles[0].VelocityAndVolume.W/FMath::Pow(.05f,3);
+            FBox Bounds(ForceInit);
+            const auto M=ToolMount->GetComponentTransform();
+            for(float X:{-82.f,40.f}) for(float Y:{-32.f,32.f}) for(float Z:{-8.f,28.f})
+                Bounds+=M.TransformPosition(FVector(X,Y,Z))/100;
+            ConveyorSurface->GenerateSurfaceFromParticlePositions(MoveTemp(ConveyorPositions),FVector3f(Bounds.Min),FVector3f(Bounds.Max));
+        }
     }
     if(!Particles.IsEmpty() && PhysicalTime>=NextReport)
     {

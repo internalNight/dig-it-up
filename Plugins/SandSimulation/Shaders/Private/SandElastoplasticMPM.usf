@@ -318,7 +318,7 @@ void MPMUpdateGridCS(uint3 DispatchThreadId : SV_DispatchThreadID)
             // relying only on an already-incoming relative velocity.
             const float PenetrationDepth = min(FaceDistance.x, min(FaceDistance.y, FaceDistance.z));
             const float SeparationSpeed = min(
-                2.0f,
+                MPMToolCentersMeters[ToolIndex].w,
                 0.20f * PenetrationDepth / max(MPMDeltaTimeSeconds, 1.0e-6f));
             if (IncomingNormalSpeed < SeparationSpeed)
             {

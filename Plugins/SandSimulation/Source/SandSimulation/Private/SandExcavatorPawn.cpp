@@ -375,7 +375,15 @@ void ASandExcavatorPawn::Tick(const float DeltaSeconds)
         bBrake = PlayerController->IsInputKeyDown(EKeys::SpaceBar);
     }
 
-    if (IsA(ASandRoadheaderPawn::StaticClass())) { BoomInput = StickInput = BucketInput = 0; }
+    if (const auto* Machine=Cast<ASandRoadheaderPawn>(this))
+    {
+        BoomInput = StickInput = BucketInput = 0;
+        if(Machine->IsCutAcceptance())
+        {
+            Throttle=Machine->GetAcceptanceThrottle();
+            bBrake=Throttle==0;
+        }
+    }
     ApplySandSuspension(DeltaSeconds, bBrake);
 
     FVector HorizontalForward = GetActorForwardVector();

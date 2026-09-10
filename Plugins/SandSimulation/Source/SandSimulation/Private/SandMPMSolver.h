@@ -154,6 +154,7 @@ struct FToolOrientedBoxState
     uint8 Motion = 0; // 0 static sample, 1 drum rotor, 2 closed-loop chain
     FVector3f MotionOrigin = FVector3f::ZeroVector;
     FQuat4f MotionRotation = FQuat4f::Identity;
+    float SeparationSpeedLimit = 2.0f;
     float Phase = 0;
     float Speed = 0;
     FVector3f CenterMeters = FVector3f::ZeroVector;

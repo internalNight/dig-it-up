@@ -1,7 +1,8 @@
-param([string]$EngineRoot='D:\UE_5.8')
+param([string]$EngineRoot='D:\UE_5.8',[switch]$TransportOnly)
 $ErrorActionPreference='Stop'
 $projectRoot=Split-Path $PSScriptRoot -Parent
 $resultRoot=Join-Path $projectRoot 'Saved\MachineAcceptance'
+if($TransportOnly) { $resultRoot=Join-Path $projectRoot 'Saved\TransportFixAcceptance' }
 New-Item -ItemType Directory -Path $resultRoot -Force | Out-Null
 $cases=@(
     @{Name='Powered'; Flags='-SandRoadheaderBench -SandRoadheaderTest -SandRoadheaderInside -SandMachineCapture'; Image='Saved\RoadheaderInside.png'},
@@ -10,6 +11,14 @@ $cases=@(
     @{Name='Excavator'; Flags='-SandExcavator -SandAutopilot -SandQuality=Legacy -SandCaptureSurfacePreview -SandCaptureDelaySeconds=8'; Image='Artifacts\SandSurfaceUEPreview.png'},
     @{Name='Selection'; Flags='-SandCaptureSurfacePreview -SandCaptureDelaySeconds=2'; Image='Artifacts\SandSurfaceUEPreview.png'}
 )
+if($TransportOnly) {
+    $cases=@(
+        @{Name='Powered'; Flags='-SandRoadheaderBench -SandRoadheaderTest -SandRoadheaderInside -SandMachineCapture'; Image='Saved\RoadheaderInside.png'},
+        @{Name='ChainStopped'; Flags='-SandRoadheaderBench -SandRoadheaderTest -SandChainStopped'; Image='Saved\RoadheaderBench.png'},
+        @{Name='Stopped'; Flags='-SandRoadheaderBench -SandRoadheaderTest -SandRoadheaderStopped'; Image='Saved\RoadheaderStopped.png'},
+        @{Name='FullCut'; Flags='-SandRoadheader -SandRoadheaderTest -SandCutTest'; Image='Saved\RoadheaderBench.png'}
+    )
+}
 $results=@()
 foreach($case in $cases) {
     $started=Get-Date
@@ -27,7 +36,7 @@ foreach($case in $cases) {
     if($proc.ExitCode -ne 0) { throw "Nonzero process exit for $($case.Name): $($proc.ExitCode)" }
     Copy-Item -LiteralPath $image -Destination (Join-Path $resultRoot ($case.Name+'.png'))
     if($log -match 'Fatal error:|Assertion failed:') { throw "Fatal error in $($case.Name)" }
-    if($case.Name -in @('Powered','Stopped')) {
+    if($case.Name -in @('Powered','Stopped','ChainStopped','FullCut')) {
         $rows=[regex]::Matches($log,'ROADHEADER t=([\d.]+).*?massError=([-\d.]+).*?delivered=([\d.]+) nonfinite=(\d+) carried=(\d+)')
         if($rows.Count -eq 0) { throw "No physical diagnostics for $($case.Name)" }
         foreach($row in $rows) {
@@ -45,5 +54,9 @@ foreach($case in $cases) {
 $powered=($results|Where-Object case -eq 'Powered').deliveredKg
 $stopped=($results|Where-Object case -eq 'Stopped').deliveredKg
 if($powered -le $stopped+1.0) { throw "Powered transport did not exceed stopped control by 1 kg: $powered / $stopped" }
+if($TransportOnly) {
+    $chainStopped=($results|Where-Object case -eq 'ChainStopped').deliveredKg
+    if($powered -le $chainStopped+1.0) { throw "Conveyor-on did not exceed conveyor-off control: $powered / $chainStopped" }
+}
 $results | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath (Join-Path $resultRoot 'results.json') -Encoding utf8
 Write-Output ('Acceptance passed. Results: '+$resultRoot)

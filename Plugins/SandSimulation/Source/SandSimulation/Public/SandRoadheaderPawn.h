@@ -3,6 +3,7 @@
 #include "SandRoadheaderPawn.generated.h"
 
 class UInstancedStaticMeshComponent;
+class ASandSurfacePreviewActor;
 
 namespace Sand::MPM { struct FToolColliderState; struct FToolInteractionResult; struct FParticleData; }
 
@@ -20,12 +21,17 @@ public:
     float GetDrumRPM() const { return DrumOmega * 60.0f / (2.0f*PI); }
     float GetConveyorSpeed() const { return ChainSpeed; }
     float GetLoadTorque() const { return DrumLoad; }
+    bool IsConveyorRegion(const FVector3f& Position) const;
+    bool IsDebugPoints() const { return bDebugPoints; }
+    bool IsCutAcceptance() const { return bCutTest; }
+    float GetAcceptanceThrottle() const { return PhysicalTime>2 && PhysicalTime<7 ? 0.25f : 0.0f; }
     bool IsRunning() const { return bRunning; }
 protected:
     virtual void BeginPlay() override;
 private:
     void UpdateMachineVisuals();
     UPROPERTY() TObjectPtr<UInstancedStaticMeshComponent> VisibleMaterialPoints;
+    UPROPERTY() TObjectPtr<ASandSurfacePreviewActor> ConveyorSurface;
     UPROPERTY() TObjectPtr<USceneComponent> ToolMount;
     UPROPERTY() TArray<TObjectPtr<UStaticMeshComponent>> MachineVisuals;
     float DrumAngle = 0;
@@ -41,6 +47,9 @@ private:
     double InitialMass = -1;
     TArray<uint8> TransportHistory;
     double DeliveredMass=0;
+    bool bDebugPoints = false;
+    bool bChainStopped = false;
+    bool bCutTest = false;
     bool bRunning = false;
     bool bInternalCamera = false;
     bool bBench = false;

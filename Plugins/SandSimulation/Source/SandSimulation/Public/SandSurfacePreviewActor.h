@@ -38,6 +38,7 @@ public:
     float IsoDensity = 1.10f;
 
     float ParticleDensityWeight = 1.0f;
+    bool bAllowAutomaticCapture = true;
 
     UFUNCTION(BlueprintCallable, CallInEditor, Category = "Sand|Surface")
     void GeneratePreviewSurface();

@@ -1,8 +1,33 @@
 #include "SandMachineKinematics.h"
 #include "SandMPMSolver.h"
+#include "SandMachineDrive.h"
 #include "Misc/AutomationTest.h"
 
 #if WITH_DEV_AUTOMATION_TESTS
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSandDriveLoadTest,"SandSimulation.Machine.DriveUnderLoad",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+bool FSandDriveLoadTest::RunTest(const FString&)
+{
+    using namespace Sand::Machine;
+    // Reproduce the user's 95 Nm load. It must settle forwards, at finite torque,
+    // under either supported outer-step duration, instead of oscillating/reversing.
+    for(float Dt : {1.0f/30,1.0f/15})
+    {
+        float Omega=0;
+        for(int32 I=0;I<300;++I)
+        {
+            const float Next=DrivenSpeed(Omega,1.8f,95*Dt,Dt,12,180,240);
+            const float Torque=(12*(Next-Omega)+95*Dt)/Dt;
+            TestTrue(TEXT("Finite actuator torque"),FMath::Abs(Torque)<=240.001f);
+            TestTrue(TEXT("95 Nm load does not reverse the drive"),Next>=0);
+            Omega=Next;
+        }
+        TestTrue(TEXT("Steady speed agrees with load balance"),FMath::Abs(Omega-(1.8f-95.0f/180))<.001f);
+        TestEqual(TEXT("Holding brake arrests a small backdrive"),BrakeSpeed(-.1f,Dt,12,300),0.0f);
+    }
+    return true;
+}
+
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSandChainPathTest,"SandSimulation.Machine.ClosedChain",
     EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 bool FSandChainPathTest::RunTest(const FString&)

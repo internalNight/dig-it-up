@@ -625,7 +625,7 @@ bool ASandSurfacePreviewActor::GenerateSurfaceFromParticlePositions(
                                 FParse::Param(FCommandLine::Get(), TEXT("SandCaptureSequence"));
                             const bool bCaptureSingle =
                                 FParse::Param(FCommandLine::Get(), TEXT("SandCaptureSurfacePreview"));
-                            if (!WeakThis->bCaptureScheduled && (bCaptureSequence || bCaptureSingle))
+                            if (WeakThis->bAllowAutomaticCapture && !WeakThis->bCaptureScheduled && (bCaptureSequence || bCaptureSingle))
                             {
                                 WeakThis->bCaptureScheduled = true;
                                 if (bCaptureSequence)

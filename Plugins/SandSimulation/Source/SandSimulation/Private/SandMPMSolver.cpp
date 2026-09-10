@@ -449,7 +449,7 @@ void EnqueueRuntimeSimulationSteps(
                     ++ColliderIndex)
                 {
                     const FToolOrientedBoxState Collider = SampleMachineCollider(Tool.Colliders[ColliderIndex], (Step+0.5f)*State->InternalDeltaSeconds);
-                    Update->MPMToolCentersMeters[ColliderIndex] = FVector4f(Collider.CenterMeters, 0.0f);
+                    Update->MPMToolCentersMeters[ColliderIndex] = FVector4f(Collider.CenterMeters, Collider.SeparationSpeedLimit);
                     Update->MPMToolAxesX[ColliderIndex] = FVector4f(Collider.AxisX, 0.0f);
                     Update->MPMToolAxesY[ColliderIndex] = FVector4f(Collider.AxisY, 0.0f);
                     Update->MPMToolAxesZ[ColliderIndex] = FVector4f(Collider.AxisZ, 0.0f);
@@ -494,7 +494,7 @@ void EnqueueRuntimeSimulationSteps(
                     ++ColliderIndex)
                 {
                     const FToolOrientedBoxState Collider = SampleMachineCollider(Tool.Colliders[ColliderIndex], (Step+0.5f)*State->InternalDeltaSeconds);
-                    G2P->MPMToolCentersMeters[ColliderIndex] = FVector4f(Collider.CenterMeters, 0.0f);
+                    G2P->MPMToolCentersMeters[ColliderIndex] = FVector4f(Collider.CenterMeters, Collider.SeparationSpeedLimit);
                     G2P->MPMToolAxesX[ColliderIndex] = FVector4f(Collider.AxisX, 0.0f);
                     G2P->MPMToolAxesY[ColliderIndex] = FVector4f(Collider.AxisY, 0.0f);
                     G2P->MPMToolAxesZ[ColliderIndex] = FVector4f(Collider.AxisZ, 0.0f);
