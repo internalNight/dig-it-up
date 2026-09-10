@@ -1,0 +1,68 @@
+#include "/Engine/Public/Platform.ush"
+#include "/SandSimulation/Private/SandCommon.ush"
+
+struct FSandParticleInitializationData
+{
+    float4 PositionAndMass;
+    float4 VelocityAndPlasticVolume;
+};
+
+RWStructuredBuffer<FSandParticleInitializationData> Particles;
+
+uint GridSizeX;
+uint GridSizeY;
+uint GridSizeZ;
+uint ParticlesPerCell;
+uint ParticleCount;
+float CellSizeMeters;
+float BulkDensityKgPerM3;
+float InitialPlasticVolume;
+float3 DomainMinimumMeters;
+
+float3 GetStratifiedOffset(const uint PointInCell)
+{
+    // The first four samples form a symmetric tetrahedron. Additional samples
+    // use a deterministic low-discrepancy pattern for diagnostic configurations.
+    const float3 Tetrahedron[4] =
+    {
+        float3(0.25f, 0.25f, 0.25f),
+        float3(0.75f, 0.75f, 0.25f),
+        float3(0.75f, 0.25f, 0.75f),
+        float3(0.25f, 0.75f, 0.75f)
+    };
+
+    if (PointInCell < 4)
+    {
+        return Tetrahedron[PointInCell];
+    }
+
+    return frac(float3(0.5f, 0.5f, 0.5f) +
+        (PointInCell + 1u) * float3(0.754877666f, 0.569840296f, 0.438579021f));
+}
+
+[numthreads(64, 1, 1)]
+void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
+{
+    const uint ParticleIndex = DispatchThreadId.x;
+    if (ParticleIndex >= ParticleCount)
+    {
+        return;
+    }
+
+    const uint PointInCell = ParticleIndex % ParticlesPerCell;
+    const uint CellIndex = ParticleIndex / ParticlesPerCell;
+    const uint CellX = CellIndex % GridSizeX;
+    const uint CellY = (CellIndex / GridSizeX) % GridSizeY;
+    const uint CellZ = CellIndex / (GridSizeX * GridSizeY);
+
+    const float3 PositionMeters = DomainMinimumMeters +
+        (float3(CellX, CellY, CellZ) + GetStratifiedOffset(PointInCell)) * CellSizeMeters;
+    const float ParticleMassKg = BulkDensityKgPerM3 *
+        CellSizeMeters * CellSizeMeters * CellSizeMeters / ParticlesPerCell;
+
+    FSandParticleInitializationData Particle;
+    Particle.PositionAndMass = float4(PositionMeters, ParticleMassKg);
+    Particle.VelocityAndPlasticVolume = float4(0.0f, 0.0f, 0.0f, InitialPlasticVolume);
+    Particles[ParticleIndex] = Particle;
+}
+

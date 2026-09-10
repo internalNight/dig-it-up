@@ -1,0 +1,9 @@
+#ifndef SAND_COMMON_USH
+#define SAND_COMMON_USH
+
+// The solver uses SI units internally. Conversion to Unreal centimeters occurs
+// only at the component and collider boundaries.
+static const float SandMetersToUnrealUnits = 100.0f;
+
+#endif
+

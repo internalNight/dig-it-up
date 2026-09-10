@@ -1,0 +1,210 @@
+#include "/Engine/Public/Platform.ush"
+#include "/SandSimulation/Private/SandCommon.ush"
+
+struct FSandGridTransferParticle
+{
+    float4 PositionAndMass;
+    float4 VelocityAndPlasticVolume;
+};
+
+StructuredBuffer<FSandGridTransferParticle> ParticlesIn;
+RWStructuredBuffer<FSandGridTransferParticle> ParticlesOut;
+
+// Four uint words per node hold the bit patterns for mass and XYZ momentum.
+// A compare/exchange loop supplies portable float addition; native float add
+// atomics are not guaranteed by Shader Model 6.6.
+RWStructuredBuffer<uint> GridScalars;
+StructuredBuffer<uint> GridScalarsIn;
+
+uint ParticleCount;
+uint GridSizeX;
+uint GridSizeY;
+uint GridSizeZ;
+float CellSizeMeters;
+float DeltaTimeSeconds;
+float GravityMetersPerSecondSquared;
+float3 GridOriginMeters;
+float3 PhysicalDomainMinimumMeters;
+float3 PhysicalDomainMaximumMeters;
+
+void AtomicAddFloat(const uint ScalarIndex, const float Value)
+{
+    uint ExpectedBits = GridScalars[ScalarIndex];
+    uint OriginalBits;
+
+    [allow_uav_condition]
+    do
+    {
+        const uint DesiredBits = asuint(asfloat(ExpectedBits) + Value);
+        InterlockedCompareExchange(GridScalars[ScalarIndex], ExpectedBits, DesiredBits, OriginalBits);
+        if (OriginalBits == ExpectedBits)
+        {
+            return;
+        }
+        ExpectedBits = OriginalBits;
+    }
+    while (true);
+}
+
+uint FlattenGridNode(const uint3 Node)
+{
+    return Node.x + GridSizeX * (Node.y + GridSizeY * Node.z);
+}
+
+void QuadraticWeights(const float Coordinate, out float Weights[3])
+{
+    const float Distance0 = 1.5f - Coordinate;
+    const float Distance1 = Coordinate - 1.0f;
+    const float Distance2 = Coordinate - 0.5f;
+    Weights[0] = 0.5f * Distance0 * Distance0;
+    Weights[1] = 0.75f - Distance1 * Distance1;
+    Weights[2] = 0.5f * Distance2 * Distance2;
+}
+
+[numthreads(64, 1, 1)]
+void P2GCS(uint3 DispatchThreadId : SV_DispatchThreadID)
+{
+    const uint ParticleIndex = DispatchThreadId.x;
+    if (ParticleIndex >= ParticleCount)
+    {
+        return;
+    }
+
+    const FSandGridTransferParticle Particle = ParticlesIn[ParticleIndex];
+    const float3 PositionMeters = Particle.PositionAndMass.xyz;
+    const float ParticleMassKg = Particle.PositionAndMass.w;
+    const float3 ParticleVelocity = Particle.VelocityAndPlasticVolume.xyz;
+
+    const float3 GridPosition = (PositionMeters - GridOriginMeters) / CellSizeMeters;
+    const int3 BaseNode = int3(floor(GridPosition - 0.5f));
+    const float3 Coordinate = GridPosition - float3(BaseNode);
+
+    float WeightsX[3];
+    float WeightsY[3];
+    float WeightsZ[3];
+    QuadraticWeights(Coordinate.x, WeightsX);
+    QuadraticWeights(Coordinate.y, WeightsY);
+    QuadraticWeights(Coordinate.z, WeightsZ);
+
+    [unroll]
+    for (uint Z = 0; Z < 3; ++Z)
+    {
+        [unroll]
+        for (uint Y = 0; Y < 3; ++Y)
+        {
+            [unroll]
+            for (uint X = 0; X < 3; ++X)
+            {
+                const int3 SignedNode = BaseNode + int3(X, Y, Z);
+                if (any(SignedNode < 0) || any(SignedNode >= int3(GridSizeX, GridSizeY, GridSizeZ)))
+                {
+                    continue;
+                }
+
+                const float Weight = WeightsX[X] * WeightsY[Y] * WeightsZ[Z];
+                const float WeightedMass = Weight * ParticleMassKg;
+                const uint ScalarBase = 4u * FlattenGridNode(uint3(SignedNode));
+                AtomicAddFloat(ScalarBase, WeightedMass);
+                AtomicAddFloat(ScalarBase + 1u, WeightedMass * ParticleVelocity.x);
+                AtomicAddFloat(ScalarBase + 2u, WeightedMass * ParticleVelocity.y);
+                AtomicAddFloat(ScalarBase + 3u, WeightedMass * ParticleVelocity.z);
+            }
+        }
+    }
+}
+
+[numthreads(64, 1, 1)]
+void UpdateGridCS(uint3 DispatchThreadId : SV_DispatchThreadID)
+{
+    const uint NodeIndex = DispatchThreadId.x;
+    const uint NodeCount = GridSizeX * GridSizeY * GridSizeZ;
+    if (NodeIndex >= NodeCount)
+    {
+        return;
+    }
+
+    const uint ScalarBase = 4u * NodeIndex;
+    const float Mass = asfloat(GridScalars[ScalarBase]);
+    if (Mass <= 0.0f)
+    {
+        return;
+    }
+
+    float3 Velocity = float3(
+        asfloat(GridScalars[ScalarBase + 1u]),
+        asfloat(GridScalars[ScalarBase + 2u]),
+        asfloat(GridScalars[ScalarBase + 3u])) / Mass;
+    Velocity.z += GravityMetersPerSecondSquared * DeltaTimeSeconds;
+
+    const uint NodeX = NodeIndex % GridSizeX;
+    const uint NodeY = (NodeIndex / GridSizeX) % GridSizeY;
+    const uint NodeZ = NodeIndex / (GridSizeX * GridSizeY);
+    const float3 NodePosition = GridOriginMeters + float3(NodeX, NodeY, NodeZ) * CellSizeMeters;
+
+    // Sticky-normal, frictionless-tangent container boundary for the first gate.
+    if (NodePosition.x <= PhysicalDomainMinimumMeters.x && Velocity.x < 0.0f) Velocity.x = 0.0f;
+    if (NodePosition.x >= PhysicalDomainMaximumMeters.x && Velocity.x > 0.0f) Velocity.x = 0.0f;
+    if (NodePosition.y <= PhysicalDomainMinimumMeters.y && Velocity.y < 0.0f) Velocity.y = 0.0f;
+    if (NodePosition.y >= PhysicalDomainMaximumMeters.y && Velocity.y > 0.0f) Velocity.y = 0.0f;
+    if (NodePosition.z <= PhysicalDomainMinimumMeters.z && Velocity.z < 0.0f) Velocity.z = 0.0f;
+
+    GridScalars[ScalarBase + 1u] = asuint(Mass * Velocity.x);
+    GridScalars[ScalarBase + 2u] = asuint(Mass * Velocity.y);
+    GridScalars[ScalarBase + 3u] = asuint(Mass * Velocity.z);
+}
+
+[numthreads(64, 1, 1)]
+void G2PCS(uint3 DispatchThreadId : SV_DispatchThreadID)
+{
+    const uint ParticleIndex = DispatchThreadId.x;
+    if (ParticleIndex >= ParticleCount)
+    {
+        return;
+    }
+
+    FSandGridTransferParticle Particle = ParticlesIn[ParticleIndex];
+    const float3 GridPosition = (Particle.PositionAndMass.xyz - GridOriginMeters) / CellSizeMeters;
+    const int3 BaseNode = int3(floor(GridPosition - 0.5f));
+    const float3 Coordinate = GridPosition - float3(BaseNode);
+
+    float WeightsX[3];
+    float WeightsY[3];
+    float WeightsZ[3];
+    QuadraticWeights(Coordinate.x, WeightsX);
+    QuadraticWeights(Coordinate.y, WeightsY);
+    QuadraticWeights(Coordinate.z, WeightsZ);
+
+    float3 NewVelocity = 0.0f;
+    [unroll]
+    for (uint Z = 0; Z < 3; ++Z)
+    {
+        [unroll]
+        for (uint Y = 0; Y < 3; ++Y)
+        {
+            [unroll]
+            for (uint X = 0; X < 3; ++X)
+            {
+                const int3 SignedNode = BaseNode + int3(X, Y, Z);
+                if (any(SignedNode < 0) || any(SignedNode >= int3(GridSizeX, GridSizeY, GridSizeZ)))
+                {
+                    continue;
+                }
+
+                const float Weight = WeightsX[X] * WeightsY[Y] * WeightsZ[Z];
+                const uint ScalarBase = 4u * FlattenGridNode(uint3(SignedNode));
+                const float Mass = asfloat(GridScalarsIn[ScalarBase]);
+                if (Mass > 0.0f)
+                {
+                    const float3 Momentum = float3(
+                        asfloat(GridScalarsIn[ScalarBase + 1u]),
+                        asfloat(GridScalarsIn[ScalarBase + 2u]),
+                        asfloat(GridScalarsIn[ScalarBase + 3u]));
+                    NewVelocity += Weight * Momentum / Mass;
+                }
+            }
+        }
+    }
+
+    Particle.VelocityAndPlasticVolume.xyz = NewVelocity;
+    ParticlesOut[ParticleIndex] = Particle;
+}

@@ -1,0 +1,24 @@
+{
+  "FileVersion": 3,
+  "Version": 1,
+  "VersionName": "0.1.0",
+  "FriendlyName": "Sand Simulation",
+  "Description": "GPU MPM sand simulation for SandExcavator.",
+  "Category": "Physics",
+  "CreatedBy": "SandExcavator Project",
+  "CanContainContent": false,
+  "Installed": false,
+  "Plugins": [
+    {
+      "Name": "ProceduralMeshComponent",
+      "Enabled": true
+    }
+  ],
+  "Modules": [
+    {
+      "Name": "SandSimulation",
+      "Type": "Runtime",
+      "LoadingPhase": "PostConfigInit"
+    }
+  ]
+}

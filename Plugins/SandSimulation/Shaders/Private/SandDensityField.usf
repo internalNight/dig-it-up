@@ -1,0 +1,75 @@
+#include "/Engine/Public/Platform.ush"
+#include "/SandSimulation/Private/SandCommon.ush"
+
+struct FSandDensityParticleData
+{
+    float4 PositionAndWeight;
+};
+
+StructuredBuffer<FSandDensityParticleData> DensityParticles;
+RWStructuredBuffer<uint> DensityFieldFixedPoint;
+
+uint DensityParticleCount;
+uint DensityGridSizeX;
+uint DensityGridSizeY;
+uint DensityGridSizeZ;
+float DensityVoxelSizeMeters;
+float DensityKernelRadiusMeters;
+float DensityFixedPointScale;
+float3 DensityGridMinimumMeters;
+
+uint FlattenDensityNode(const uint3 Node)
+{
+    return Node.x + DensityGridSizeX * (Node.y + DensityGridSizeY * Node.z);
+}
+
+[numthreads(64, 1, 1)]
+void SplatDensityCS(uint3 DispatchThreadId : SV_DispatchThreadID)
+{
+    const uint ParticleIndex = DispatchThreadId.x;
+    if (ParticleIndex >= DensityParticleCount)
+    {
+        return;
+    }
+
+    const FSandDensityParticleData Particle = DensityParticles[ParticleIndex];
+    const float3 GridCoordinate =
+        (Particle.PositionAndWeight.xyz - DensityGridMinimumMeters) / DensityVoxelSizeMeters;
+    const int RadiusInNodes = int(ceil(DensityKernelRadiusMeters / DensityVoxelSizeMeters));
+    const int3 CentreNode = int3(round(GridCoordinate));
+    const float RadiusSquared = DensityKernelRadiusMeters * DensityKernelRadiusMeters;
+
+    for (int Z = -RadiusInNodes; Z <= RadiusInNodes; ++Z)
+    {
+        for (int Y = -RadiusInNodes; Y <= RadiusInNodes; ++Y)
+        {
+            for (int X = -RadiusInNodes; X <= RadiusInNodes; ++X)
+            {
+                const int3 SignedNode = CentreNode + int3(X, Y, Z);
+                if (any(SignedNode < 0) ||
+                    any(SignedNode >= int3(DensityGridSizeX, DensityGridSizeY, DensityGridSizeZ)))
+                {
+                    continue;
+                }
+
+                const float3 NodePosition = DensityGridMinimumMeters +
+                    float3(SignedNode) * DensityVoxelSizeMeters;
+                const float DistanceSquared = dot(
+                    NodePosition - Particle.PositionAndWeight.xyz,
+                    NodePosition - Particle.PositionAndWeight.xyz);
+                if (DistanceSquared >= RadiusSquared)
+                {
+                    continue;
+                }
+
+                const float NormalizedSquaredDistance = DistanceSquared / RadiusSquared;
+                const float KernelBase = 1.0f - NormalizedSquaredDistance;
+                const float KernelWeight =
+                    KernelBase * KernelBase * KernelBase * Particle.PositionAndWeight.w;
+                const uint FixedContribution = uint(round(KernelWeight * DensityFixedPointScale));
+                InterlockedAdd(DensityFieldFixedPoint[FlattenDensityNode(uint3(SignedNode))], FixedContribution);
+            }
+        }
+    }
+}
+

@@ -1,0 +1,58 @@
+Dig It Up — U 盘便携试玩版（Windows x64，2026-09-09）
+
+【在另一台电脑启动】
+1. 把整个 DigItUp 文件夹复制到 U 盘，不能只拷贝 exe 或 Start.cmd。
+   如果拿到的是 ZIP，必须先“全部解压缩”，不能在压缩包里直接运行。
+2. 在目标电脑打开文件夹，双击 Start.cmd。
+   Start_720p.cmd 使用较低的渲染分辨率，适合先试运行。
+3. 不需要安装 UE5、Visual Studio、Epic Games Launcher，也不需要登录账户。
+4. 可以直接从 U 盘启动；更推荐先复制到目标电脑 SSD，减少加载等待。
+   游戏运行期间不要拔出 U 盘。不要格式化 U 盘；普通文件复制即可。
+5. 如果复制后启动异常，可双击 VerifyFiles.cmd 检查文件是否完整。
+
+【兼容范围与性能】
+这是 Windows 10/11 64 位、DirectX 12 / Shader Model 6 的试玩版。
+不是 macOS、Linux、手机、Windows 7/8 或 ARM 专用版本。
+需要兼容显卡和较新的显卡驱动；老旧核显即使可以启动也可能非常慢。
+仅实测过 RTX 4070 Laptop 8 GB / 16 GB 内存这一台机器；建议以相近配置试用，
+不是已经验证过的最低配置。降低窗口分辨率只降低渲染负载，不减少沙地物理解算。
+启动程序不再锁定显卡编号。双显卡电脑若运行很慢，请在 Windows 设置 →
+系统 → 显示 → 图形中，为 SandExcavator/Binaries/Win64/SandExcavator.exe
+选择“高性能”。本包不保证所有电脑都能运行，也没有跨品牌显卡实机测试。
+
+【运行库与报错】
+包内已随游戏携带微软 C++ 运行库 DLL，通常不需要管理员安装。
+如果提示缺少 MSVCP140 / VCRUNTIME140，可先检查文件完整性，或双击
+InstallRuntime.cmd，按微软安装程序提示操作（可能需要管理员权限）。
+Prerequisites/vc_redist.x64.exe 是离线安装程序，不需要下载 Visual Studio。
+如明确提示 GameInput 缺失，可运行 Prerequisites/GameInputRedist.msi。
+如提示 DX12 / SM6 不支持，应检查显卡能力和官方驱动；切换 DX11 不能解决，
+本游戏的沙地计算着色器按 DX12 / SM6 打包。
+如为 Windows N 版本且提示媒体组件缺失，请按微软官方说明补齐媒体功能。
+该试玩版没有购买代码签名证书，Windows 可能提示“未知发布者”。仅运行你确认
+来源的原始游戏包；不要为运行本游戏关闭杀毒、防火墙或其他系统保护。
+
+【操作与目标】
+W / S：前进 / 后退       A / D：转向       空格：刹车
+Q / E：大臂抬高 / 降低（抬升上限 85°）
+R / F：小臂收回 / 伸出   T / G：铲斗收拢 / 倾倒
+H：显示 / 隐藏操作帮助   Esc：退出
+5 × 5 米沙箱，沙深 1.5 米。挖出约 10 × 10 厘米红色底面后，约 3 秒显示
+金色 VICTORY。Enter 或 Continue Digging 继续探索，Esc 或 Exit Game 退出。
+银灰沙面，4 厘米表面重建，6.25 厘米物理解算；尚属开发测试版。
+
+【数据与隐私】
+本版没有挖掘进度保存功能；关闭后再次启动会重置沙地。不要把日志当成存档。
+通过 Start.cmd 启动时，设置、日志写入目标电脑的：
+%LOCALAPPDATA%\DigItUp\Saved
+显卡驱动等也可能在电脑自己的缓存目录写文件，不承诺绝对零系统写入。
+没有附带开发者的项目源码、调试符号、测试截图、历史日志或个人配置。
+自带的 SHA256.csv 只用于检测拷贝损坏，不是数字签名。
+
+【来源】
+运行库来自本机已安装的 Microsoft Visual Studio 2026 Redistributable 14.51.36247。
+本地部署方式：https://learn.microsoft.com/en-us/cpp/windows/deployment-in-visual-cpp
+运行库说明：https://learn.microsoft.com/en-us/cpp/windows/latest-supported-vc-redist
+引擎组件及其原有 NOTICES、第三方声明保持随包提供。
+微软本地运行库不会通过 Windows Update 自动替换本包内的 DLL；后续游戏版本应
+随包更新这些运行库。长期使用建议保持操作系统、驱动和官方运行库更新。

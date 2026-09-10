@@ -1,0 +1,609 @@
+#include "/Engine/Public/Platform.ush"
+#include "/SandSimulation/Private/SandCommon.ush"
+
+struct FSandMPMParticle
+{
+    float4 PositionAndMass;
+    float4 VelocityAndVolume;
+    float4 StressRow0AndCompaction;
+    float4 StressRemainder;
+    float4 BucketLocalAndCarried;
+};
+
+StructuredBuffer<FSandMPMParticle> MPMParticlesIn;
+RWStructuredBuffer<FSandMPMParticle> MPMParticlesOut;
+RWStructuredBuffer<uint> MPMGridScalars;
+StructuredBuffer<uint> MPMGridScalarsIn;
+RWStructuredBuffer<uint> MPMToolImpulseScalars;
+
+uint MPMParticleCount;
+uint MPMGridSizeX;
+uint MPMGridSizeY;
+uint MPMGridSizeZ;
+float MPMCellSizeMeters;
+float MPMDeltaTimeSeconds;
+float MPMGravityMetersPerSecondSquared;
+float MPMBoundaryFriction;
+float MPMLameMuPa;
+float MPMLameLambdaPa;
+float MPMFrictionSlope;
+float MPMCohesionInterceptPa;
+float MPMHardeningRate;
+float MPMVelocityDampingPerSecond;
+float3 MPMGridOriginMeters;
+float3 MPMPhysicalDomainMinimumMeters;
+float3 MPMPhysicalDomainMaximumMeters;
+uint MPMToolColliderCount;
+float4 MPMToolCentersMeters[8];
+float4 MPMToolAxesX[8];
+float4 MPMToolAxesY[8];
+float4 MPMToolAxesZ[8];
+float4 MPMToolHalfExtentsMeters[8];
+float4 MPMToolLinearVelocitiesMetersPerSecond[8];
+float4 MPMToolAngularVelocitiesRadiansPerSecond[8];
+uint MPMBucketInteriorEnabled;
+float MPMBucketInteriorDampingPerSecond;
+float3 MPMBucketInteriorCenterMeters;
+float3 MPMBucketInteriorAxisX;
+float3 MPMBucketInteriorAxisY;
+float3 MPMBucketInteriorAxisZ;
+float3 MPMBucketInteriorHalfExtentsMeters;
+float3 MPMBucketInteriorLinearVelocityMetersPerSecond;
+float3 MPMBucketInteriorAngularVelocityRadiansPerSecond;
+
+void MPMAtomicAddFloat(const uint ScalarIndex, const float Value)
+{
+    uint ExpectedBits = MPMGridScalars[ScalarIndex];
+    uint OriginalBits;
+    [allow_uav_condition]
+    do
+    {
+        const uint DesiredBits = asuint(asfloat(ExpectedBits) + Value);
+        InterlockedCompareExchange(MPMGridScalars[ScalarIndex], ExpectedBits, DesiredBits, OriginalBits);
+        if (OriginalBits == ExpectedBits)
+        {
+            return;
+        }
+        ExpectedBits = OriginalBits;
+    }
+    while (true);
+}
+
+void MPMAtomicAddToolFloat(const uint ScalarIndex, const float Value)
+{
+    uint ExpectedBits = MPMToolImpulseScalars[ScalarIndex];
+    uint OriginalBits;
+    [allow_uav_condition]
+    do
+    {
+        const uint DesiredBits = asuint(asfloat(ExpectedBits) + Value);
+        InterlockedCompareExchange(MPMToolImpulseScalars[ScalarIndex], ExpectedBits, DesiredBits, OriginalBits);
+        if (OriginalBits == ExpectedBits)
+        {
+            return;
+        }
+        ExpectedBits = OriginalBits;
+    }
+    while (true);
+}
+
+uint MPMFlattenGridNode(const uint3 Node)
+{
+    return Node.x + MPMGridSizeX * (Node.y + MPMGridSizeY * Node.z);
+}
+
+void MPMQuadraticWeightsAndDerivatives(
+    const float Coordinate,
+    out float Weights[3],
+    out float Derivatives[3])
+{
+    const float Distance0 = 1.5f - Coordinate;
+    const float Distance1 = Coordinate - 1.0f;
+    const float Distance2 = Coordinate - 0.5f;
+    Weights[0] = 0.5f * Distance0 * Distance0;
+    Weights[1] = 0.75f - Distance1 * Distance1;
+    Weights[2] = 0.5f * Distance2 * Distance2;
+    Derivatives[0] = -Distance0;
+    Derivatives[1] = -2.0f * Distance1;
+    Derivatives[2] = Distance2;
+}
+
+float3x3 MPMReadStress(const FSandMPMParticle Particle)
+{
+    return float3x3(
+        Particle.StressRow0AndCompaction.x,
+        Particle.StressRow0AndCompaction.y,
+        Particle.StressRow0AndCompaction.z,
+        Particle.StressRow0AndCompaction.y,
+        Particle.StressRemainder.x,
+        Particle.StressRemainder.y,
+        Particle.StressRow0AndCompaction.z,
+        Particle.StressRemainder.y,
+        Particle.StressRemainder.z);
+}
+
+void MPMWriteStress(inout FSandMPMParticle Particle, const float3x3 Stress, const float Compaction)
+{
+    Particle.StressRow0AndCompaction = float4(Stress[0][0], Stress[0][1], Stress[0][2], Compaction);
+    Particle.StressRemainder = float4(Stress[1][1], Stress[1][2], Stress[2][2], 0.0f);
+}
+
+float3x3 MPMOuterProduct(const float3 A, const float3 B)
+{
+    return float3x3(
+        A.x * B.x, A.x * B.y, A.x * B.z,
+        A.y * B.x, A.y * B.y, A.y * B.z,
+        A.z * B.x, A.z * B.y, A.z * B.z);
+}
+
+[numthreads(64, 1, 1)]
+void MPMP2GCS(uint3 DispatchThreadId : SV_DispatchThreadID)
+{
+    const uint ParticleIndex = DispatchThreadId.x;
+    if (ParticleIndex >= MPMParticleCount)
+    {
+        return;
+    }
+
+    const FSandMPMParticle Particle = MPMParticlesIn[ParticleIndex];
+    const float3 Position = Particle.PositionAndMass.xyz;
+    const float Mass = Particle.PositionAndMass.w;
+    const float3 Velocity = Particle.VelocityAndVolume.xyz;
+    const float Volume = Particle.VelocityAndVolume.w;
+    const float3x3 Stress = MPMReadStress(Particle);
+
+    const float3 GridPosition = (Position - MPMGridOriginMeters) / MPMCellSizeMeters;
+    const int3 BaseNode = int3(floor(GridPosition - 0.5f));
+    const float3 Coordinate = GridPosition - float3(BaseNode);
+    float WX[3], WY[3], WZ[3];
+    float DX[3], DY[3], DZ[3];
+    MPMQuadraticWeightsAndDerivatives(Coordinate.x, WX, DX);
+    MPMQuadraticWeightsAndDerivatives(Coordinate.y, WY, DY);
+    MPMQuadraticWeightsAndDerivatives(Coordinate.z, WZ, DZ);
+
+    [unroll]
+    for (uint Z = 0; Z < 3; ++Z)
+    {
+        [unroll]
+        for (uint Y = 0; Y < 3; ++Y)
+        {
+            [unroll]
+            for (uint X = 0; X < 3; ++X)
+            {
+                const int3 SignedNode = BaseNode + int3(X, Y, Z);
+                if (any(SignedNode < 0) || any(SignedNode >= int3(MPMGridSizeX, MPMGridSizeY, MPMGridSizeZ)))
+                {
+                    continue;
+                }
+
+                const float Weight = WX[X] * WY[Y] * WZ[Z];
+                const float3 Gradient = float3(
+                    DX[X] * WY[Y] * WZ[Z],
+                    WX[X] * DY[Y] * WZ[Z],
+                    WX[X] * WY[Y] * DZ[Z]) / MPMCellSizeMeters;
+                const float WeightedMass = Weight * Mass;
+                const float3 InternalForce = -Volume * mul(Stress, Gradient);
+                const float3 Momentum = WeightedMass * Velocity + MPMDeltaTimeSeconds * InternalForce;
+                const uint ScalarBase = 4u * MPMFlattenGridNode(uint3(SignedNode));
+                MPMAtomicAddFloat(ScalarBase, WeightedMass);
+                MPMAtomicAddFloat(ScalarBase + 1u, Momentum.x);
+                MPMAtomicAddFloat(ScalarBase + 2u, Momentum.y);
+                MPMAtomicAddFloat(ScalarBase + 3u, Momentum.z);
+            }
+        }
+    }
+}
+
+void MPMApplyTangentialFriction(inout float A, inout float B, const float RemovedNormalSpeed)
+{
+    const float TangentialSpeed = length(float2(A, B));
+    if (TangentialSpeed > 1.0e-7f)
+    {
+        const float NewSpeed = max(0.0f, TangentialSpeed - MPMBoundaryFriction * RemovedNormalSpeed);
+        const float Scale = NewSpeed / TangentialSpeed;
+        A *= Scale;
+        B *= Scale;
+    }
+}
+
+[numthreads(64, 1, 1)]
+void MPMUpdateGridCS(uint3 DispatchThreadId : SV_DispatchThreadID)
+{
+    const uint NodeIndex = DispatchThreadId.x;
+    const uint NodeCount = MPMGridSizeX * MPMGridSizeY * MPMGridSizeZ;
+    if (NodeIndex >= NodeCount)
+    {
+        return;
+    }
+
+    const uint ScalarBase = 4u * NodeIndex;
+    const float Mass = asfloat(MPMGridScalars[ScalarBase]);
+    if (Mass <= 0.0f)
+    {
+        return;
+    }
+
+    float3 Velocity = float3(
+        asfloat(MPMGridScalars[ScalarBase + 1u]),
+        asfloat(MPMGridScalars[ScalarBase + 2u]),
+        asfloat(MPMGridScalars[ScalarBase + 3u])) / Mass;
+    Velocity.z += MPMGravityMetersPerSecondSquared * MPMDeltaTimeSeconds;
+
+    const uint NodeX = NodeIndex % MPMGridSizeX;
+    const uint NodeY = (NodeIndex / MPMGridSizeX) % MPMGridSizeY;
+    const uint NodeZ = NodeIndex / (MPMGridSizeX * MPMGridSizeY);
+    const float3 NodePosition = MPMGridOriginMeters + float3(NodeX, NodeY, NodeZ) * MPMCellSizeMeters;
+    const float BoundaryLayer = MPMCellSizeMeters;
+
+    if (NodePosition.z <= MPMPhysicalDomainMinimumMeters.z + BoundaryLayer && Velocity.z < 0.0f)
+    {
+        const float RemovedSpeed = -Velocity.z;
+        Velocity.z = 0.0f;
+        MPMApplyTangentialFriction(Velocity.x, Velocity.y, RemovedSpeed);
+    }
+    if (NodePosition.x <= MPMPhysicalDomainMinimumMeters.x + BoundaryLayer && Velocity.x < 0.0f)
+    {
+        const float RemovedSpeed = -Velocity.x;
+        Velocity.x = 0.0f;
+        MPMApplyTangentialFriction(Velocity.y, Velocity.z, RemovedSpeed);
+    }
+    if (NodePosition.x >= MPMPhysicalDomainMaximumMeters.x - BoundaryLayer && Velocity.x > 0.0f)
+    {
+        const float RemovedSpeed = Velocity.x;
+        Velocity.x = 0.0f;
+        MPMApplyTangentialFriction(Velocity.y, Velocity.z, RemovedSpeed);
+    }
+    if (NodePosition.y <= MPMPhysicalDomainMinimumMeters.y + BoundaryLayer && Velocity.y < 0.0f)
+    {
+        const float RemovedSpeed = -Velocity.y;
+        Velocity.y = 0.0f;
+        MPMApplyTangentialFriction(Velocity.x, Velocity.z, RemovedSpeed);
+    }
+    if (NodePosition.y >= MPMPhysicalDomainMaximumMeters.y - BoundaryLayer && Velocity.y > 0.0f)
+    {
+        const float RemovedSpeed = Velocity.y;
+        Velocity.y = 0.0f;
+        MPMApplyTangentialFriction(Velocity.x, Velocity.z, RemovedSpeed);
+    }
+
+    [loop]
+    for (uint ToolIndex = 0u; ToolIndex < min(MPMToolColliderCount, 8u); ++ToolIndex)
+    {
+        const float3 VelocityBeforeToolContact = Velocity;
+        const float3 ToolCenter = MPMToolCentersMeters[ToolIndex].xyz;
+        const float3 ToolAxisX = MPMToolAxesX[ToolIndex].xyz;
+        const float3 ToolAxisY = MPMToolAxesY[ToolIndex].xyz;
+        const float3 ToolAxisZ = MPMToolAxesZ[ToolIndex].xyz;
+        const float3 ToolDelta = NodePosition - ToolCenter;
+        const float3 LocalPosition = float3(
+            dot(ToolDelta, ToolAxisX),
+            dot(ToolDelta, ToolAxisY),
+            dot(ToolDelta, ToolAxisZ));
+        const float3 FaceDistance = MPMToolHalfExtentsMeters[ToolIndex].xyz - abs(LocalPosition);
+        if (all(FaceDistance >= 0.0f))
+        {
+            float3 ContactNormal;
+            if (FaceDistance.x <= FaceDistance.y && FaceDistance.x <= FaceDistance.z)
+            {
+                ContactNormal = ToolAxisX * (LocalPosition.x >= 0.0f ? 1.0f : -1.0f);
+            }
+            else if (FaceDistance.y <= FaceDistance.z)
+            {
+                ContactNormal = ToolAxisY * (LocalPosition.y >= 0.0f ? 1.0f : -1.0f);
+            }
+            else
+            {
+                ContactNormal = ToolAxisZ * (LocalPosition.z >= 0.0f ? 1.0f : -1.0f);
+            }
+
+            const float3 ToolVelocityAtNode = MPMToolLinearVelocitiesMetersPerSecond[ToolIndex].xyz +
+                cross(MPMToolAngularVelocitiesRadiansPerSecond[ToolIndex].xyz, ToolDelta);
+            float3 RelativeVelocity = Velocity - ToolVelocityAtNode;
+            const float IncomingNormalSpeed = dot(RelativeVelocity, ContactNormal);
+            // Nodes may enter a moving collider while both sand and rigid body travel in the
+            // same direction. A modest Baumgarte term expels penetrated material instead of
+            // relying only on an already-incoming relative velocity.
+            const float PenetrationDepth = min(FaceDistance.x, min(FaceDistance.y, FaceDistance.z));
+            const float SeparationSpeed = min(
+                2.0f,
+                0.20f * PenetrationDepth / max(MPMDeltaTimeSeconds, 1.0e-6f));
+            if (IncomingNormalSpeed < SeparationSpeed)
+            {
+                const float RemovedNormalSpeed = SeparationSpeed - IncomingNormalSpeed;
+                RelativeVelocity += RemovedNormalSpeed * ContactNormal;
+                const float3 TangentialVelocity =
+                    RelativeVelocity - dot(RelativeVelocity, ContactNormal) * ContactNormal;
+                const float TangentialSpeed = length(TangentialVelocity);
+                if (TangentialSpeed > 1.0e-7f)
+                {
+                    const float NewTangentialSpeed = max(
+                        0.0f, TangentialSpeed - MPMBoundaryFriction * RemovedNormalSpeed);
+                    RelativeVelocity +=
+                        (NewTangentialSpeed / TangentialSpeed - 1.0f) * TangentialVelocity;
+                }
+                Velocity = ToolVelocityAtNode + RelativeVelocity;
+            }
+        }
+
+
+        const float3 SandImpulse = Mass * (Velocity - VelocityBeforeToolContact);
+        // The runtime collider order is two tracks followed by five bucket
+        // plates. Track reaction is handled by the chassis support model.
+        if (ToolIndex >= 2u &&
+            any(abs(SandImpulse) > 1.0e-10f))
+        {
+            const float3 SandAngularImpulse = cross(ToolDelta, SandImpulse);
+            MPMAtomicAddToolFloat(0u, SandImpulse.x);
+            MPMAtomicAddToolFloat(1u, SandImpulse.y);
+            MPMAtomicAddToolFloat(2u, SandImpulse.z);
+            MPMAtomicAddToolFloat(3u, SandAngularImpulse.x);
+            MPMAtomicAddToolFloat(4u, SandAngularImpulse.y);
+            MPMAtomicAddToolFloat(5u, SandAngularImpulse.z);
+        }
+    }
+
+    MPMGridScalars[ScalarBase + 1u] = asuint(Mass * Velocity.x);
+    MPMGridScalars[ScalarBase + 2u] = asuint(Mass * Velocity.y);
+    MPMGridScalars[ScalarBase + 3u] = asuint(Mass * Velocity.z);
+}
+
+[numthreads(64, 1, 1)]
+void MPMG2PCS(uint3 DispatchThreadId : SV_DispatchThreadID)
+{
+    const uint ParticleIndex = DispatchThreadId.x;
+    if (ParticleIndex >= MPMParticleCount)
+    {
+        return;
+    }
+
+    FSandMPMParticle Particle = MPMParticlesIn[ParticleIndex];
+    const float3 GridPosition = (Particle.PositionAndMass.xyz - MPMGridOriginMeters) / MPMCellSizeMeters;
+    const int3 BaseNode = int3(floor(GridPosition - 0.5f));
+    const float3 Coordinate = GridPosition - float3(BaseNode);
+    float WX[3], WY[3], WZ[3];
+    float DX[3], DY[3], DZ[3];
+    MPMQuadraticWeightsAndDerivatives(Coordinate.x, WX, DX);
+    MPMQuadraticWeightsAndDerivatives(Coordinate.y, WY, DY);
+    MPMQuadraticWeightsAndDerivatives(Coordinate.z, WZ, DZ);
+
+    float3 NewVelocity = 0.0f;
+    float3x3 VelocityGradient = (float3x3)0.0f;
+    [unroll]
+    for (uint Z = 0; Z < 3; ++Z)
+    {
+        [unroll]
+        for (uint Y = 0; Y < 3; ++Y)
+        {
+            [unroll]
+            for (uint X = 0; X < 3; ++X)
+            {
+                const int3 SignedNode = BaseNode + int3(X, Y, Z);
+                if (any(SignedNode < 0) || any(SignedNode >= int3(MPMGridSizeX, MPMGridSizeY, MPMGridSizeZ)))
+                {
+                    continue;
+                }
+                const uint ScalarBase = 4u * MPMFlattenGridNode(uint3(SignedNode));
+                const float NodeMass = asfloat(MPMGridScalarsIn[ScalarBase]);
+                if (NodeMass <= 0.0f)
+                {
+                    continue;
+                }
+
+                const float3 GridVelocity = float3(
+                    asfloat(MPMGridScalarsIn[ScalarBase + 1u]),
+                    asfloat(MPMGridScalarsIn[ScalarBase + 2u]),
+                    asfloat(MPMGridScalarsIn[ScalarBase + 3u])) / NodeMass;
+                const float Weight = WX[X] * WY[Y] * WZ[Z];
+                const float3 Gradient = float3(
+                    DX[X] * WY[Y] * WZ[Z],
+                    WX[X] * DY[Y] * WZ[Z],
+                    WX[X] * WY[Y] * DZ[Z]) / MPMCellSizeMeters;
+                NewVelocity += Weight * GridVelocity;
+                VelocityGradient += MPMOuterProduct(GridVelocity, Gradient);
+            }
+        }
+    }
+
+    const float3x3 StrainIncrement =
+        0.5f * MPMDeltaTimeSeconds * (VelocityGradient + transpose(VelocityGradient));
+    const float VolumetricStrainIncrement =
+        StrainIncrement[0][0] + StrainIncrement[1][1] + StrainIncrement[2][2];
+    float3x3 TrialStress = MPMReadStress(Particle) + 2.0f * MPMLameMuPa * StrainIncrement;
+    TrialStress[0][0] += MPMLameLambdaPa * VolumetricStrainIncrement;
+    TrialStress[1][1] += MPMLameLambdaPa * VolumetricStrainIncrement;
+    TrialStress[2][2] += MPMLameLambdaPa * VolumetricStrainIncrement;
+
+    float Compaction = saturate(
+        Particle.StressRow0AndCompaction.w + MPMHardeningRate * max(0.0f, -VolumetricStrainIncrement));
+    float Pressure = clamp(
+        -(TrialStress[0][0] + TrialStress[1][1] + TrialStress[2][2]) / 3.0f,
+        0.0f,
+        500000.0f);
+    float3x3 ProjectedStress = (float3x3)0.0f;
+
+    if (Pressure > 0.0f)
+    {
+        float3x3 Deviator = TrialStress;
+        Deviator[0][0] += Pressure;
+        Deviator[1][1] += Pressure;
+        Deviator[2][2] += Pressure;
+        float DeviatorNormSquared = 0.0f;
+        [unroll]
+        for (uint Row = 0; Row < 3; ++Row)
+        {
+            [unroll]
+            for (uint Column = 0; Column < 3; ++Column)
+            {
+                DeviatorNormSquared += Deviator[Row][Column] * Deviator[Row][Column];
+            }
+        }
+        const float Q = sqrt(max(0.0f, 1.5f * DeviatorNormSquared));
+        const float HardeningScale = lerp(0.75f, 1.25f, Compaction);
+        const float YieldQ = HardeningScale *
+            (MPMFrictionSlope * Pressure + MPMCohesionInterceptPa);
+        if (Q > YieldQ && Q > 1.0e-6f)
+        {
+            Deviator *= YieldQ / Q;
+        }
+        ProjectedStress = Deviator;
+        ProjectedStress[0][0] -= Pressure;
+        ProjectedStress[1][1] -= Pressure;
+        ProjectedStress[2][2] -= Pressure;
+    }
+
+    NewVelocity *= exp(-MPMVelocityDampingPerSecond * MPMDeltaTimeSeconds);
+    // Guard the interactive runtime against a single ill-conditioned cell
+    // injecting an unphysical ballistic particle. Four metres per second is
+    // still well above the expected speed of this 40 cm excavator.
+    const float AdvectedSpeed = length(NewVelocity);
+    if (AdvectedSpeed > 4.0f)
+    {
+        NewVelocity *= 4.0f / AdvectedSpeed;
+    }
+    float3 NewPosition = Particle.PositionAndMass.xyz + MPMDeltaTimeSeconds * NewVelocity;
+    const float ParticleMargin = 0.125f * MPMCellSizeMeters;
+    const float3 MinimumPosition = MPMPhysicalDomainMinimumMeters + ParticleMargin;
+    const float3 MaximumPosition = MPMPhysicalDomainMaximumMeters - ParticleMargin;
+
+    if (NewPosition.x < MinimumPosition.x) { NewPosition.x = MinimumPosition.x; NewVelocity.x = max(0.0f, NewVelocity.x); }
+    if (NewPosition.x > MaximumPosition.x) { NewPosition.x = MaximumPosition.x; NewVelocity.x = min(0.0f, NewVelocity.x); }
+    if (NewPosition.y < MinimumPosition.y) { NewPosition.y = MinimumPosition.y; NewVelocity.y = max(0.0f, NewVelocity.y); }
+    if (NewPosition.y > MaximumPosition.y) { NewPosition.y = MaximumPosition.y; NewVelocity.y = min(0.0f, NewVelocity.y); }
+    if (NewPosition.z < MinimumPosition.z) { NewPosition.z = MinimumPosition.z; NewVelocity.z = max(0.0f, NewVelocity.z); }
+    if (NewPosition.z > MaximumPosition.z) { NewPosition.z = MaximumPosition.z; NewVelocity.z = min(0.0f, NewVelocity.z); }
+
+    // Grid contact transfers momentum efficiently, while this material-point pass
+    // prevents individual samples from leaking through bucket plates after G2P interpolation.
+    [loop]
+    for (uint ToolIndex = 0u; ToolIndex < min(MPMToolColliderCount, 8u); ++ToolIndex)
+    {
+        const float3 ToolCenter = MPMToolCentersMeters[ToolIndex].xyz;
+        const float3 ToolAxisX = MPMToolAxesX[ToolIndex].xyz;
+        const float3 ToolAxisY = MPMToolAxesY[ToolIndex].xyz;
+        const float3 ToolAxisZ = MPMToolAxesZ[ToolIndex].xyz;
+        const float3 ToolDelta = NewPosition - ToolCenter;
+        const float3 LocalPosition = float3(
+            dot(ToolDelta, ToolAxisX),
+            dot(ToolDelta, ToolAxisY),
+            dot(ToolDelta, ToolAxisZ));
+        const float3 FaceDistance = MPMToolHalfExtentsMeters[ToolIndex].xyz - abs(LocalPosition);
+        if (all(FaceDistance >= 0.0f))
+        {
+            float3 ContactNormal;
+            float PenetrationDepth;
+            if (FaceDistance.x <= FaceDistance.y && FaceDistance.x <= FaceDistance.z)
+            {
+                ContactNormal = ToolAxisX * (LocalPosition.x >= 0.0f ? 1.0f : -1.0f);
+                PenetrationDepth = FaceDistance.x;
+            }
+            else if (FaceDistance.y <= FaceDistance.z)
+            {
+                ContactNormal = ToolAxisY * (LocalPosition.y >= 0.0f ? 1.0f : -1.0f);
+                PenetrationDepth = FaceDistance.y;
+            }
+            else
+            {
+                ContactNormal = ToolAxisZ * (LocalPosition.z >= 0.0f ? 1.0f : -1.0f);
+                PenetrationDepth = FaceDistance.z;
+            }
+
+            NewPosition += ContactNormal * (PenetrationDepth + 0.02f * MPMCellSizeMeters);
+            const float3 CorrectedToolDelta = NewPosition - ToolCenter;
+            const float3 ToolVelocityAtParticle =
+                MPMToolLinearVelocitiesMetersPerSecond[ToolIndex].xyz +
+                cross(MPMToolAngularVelocitiesRadiansPerSecond[ToolIndex].xyz, CorrectedToolDelta);
+            float3 RelativeVelocity = NewVelocity - ToolVelocityAtParticle;
+            const float IncomingNormalSpeed = dot(RelativeVelocity, ContactNormal);
+            if (IncomingNormalSpeed < 0.0f)
+            {
+                const float RemovedNormalSpeed = -IncomingNormalSpeed;
+                RelativeVelocity -= IncomingNormalSpeed * ContactNormal;
+                const float3 TangentialVelocity =
+                    RelativeVelocity - dot(RelativeVelocity, ContactNormal) * ContactNormal;
+                const float TangentialSpeed = length(TangentialVelocity);
+                if (TangentialSpeed > 1.0e-7f)
+                {
+                    const float NewTangentialSpeed = max(
+                        0.0f, TangentialSpeed - MPMBoundaryFriction * RemovedNormalSpeed);
+                    RelativeVelocity +=
+                        (NewTangentialSpeed / TangentialSpeed - 1.0f) * TangentialVelocity;
+                }
+                NewVelocity = ToolVelocityAtParticle + RelativeVelocity;
+            }
+        }
+    }
+
+    bool IsInsideBucketInterior = false;
+    float3 BucketInteriorLocal = 0.0f;
+    if (MPMBucketInteriorEnabled != 0u)
+    {
+        const float3 InteriorDelta = NewPosition - MPMBucketInteriorCenterMeters;
+        BucketInteriorLocal = float3(
+            dot(InteriorDelta, MPMBucketInteriorAxisX),
+            dot(InteriorDelta, MPMBucketInteriorAxisY),
+            dot(InteriorDelta, MPMBucketInteriorAxisZ));
+        IsInsideBucketInterior = all(
+            abs(BucketInteriorLocal) <= MPMBucketInteriorHalfExtentsMeters);
+        if (IsInsideBucketInterior)
+        {
+            const float3 InteriorVelocity = MPMBucketInteriorLinearVelocityMetersPerSecond +
+                cross(MPMBucketInteriorAngularVelocityRadiansPerSecond, InteriorDelta);
+            const float DampingScale = exp(
+                -MPMBucketInteriorDampingPerSecond * MPMDeltaTimeSeconds);
+            NewVelocity = InteriorVelocity + (NewVelocity - InteriorVelocity) * DampingScale;
+        }
+    }
+
+    float4 BucketAttachment = Particle.BucketLocalAndCarried;
+    if (BucketAttachment.w > 0.5f)
+    {
+        // A downward-facing opening releases the load back into the ordinary MPM state.
+        if (MPMBucketInteriorEnabled == 0u || MPMBucketInteriorAxisZ.z < -0.15f)
+        {
+            BucketAttachment.w = 0.0f;
+        }
+        else
+        {
+            const float3 TargetPosition = MPMBucketInteriorCenterMeters +
+                BucketAttachment.x * MPMBucketInteriorAxisX +
+                BucketAttachment.y * MPMBucketInteriorAxisY +
+                BucketAttachment.z * MPMBucketInteriorAxisZ;
+            const float3 TargetDelta = TargetPosition - MPMBucketInteriorCenterMeters;
+            NewPosition = TargetPosition;
+            NewVelocity = MPMBucketInteriorLinearVelocityMetersPerSecond +
+                cross(MPMBucketInteriorAngularVelocityRadiansPerSecond, TargetDelta);
+        }
+    }
+    else if (IsInsideBucketInterior && MPMBucketInteriorAxisZ.z > 0.0f)
+    {
+        // Keep particle centres clear of the unresolved plate thickness. The
+        // reconstructed density surface is wider than one MPM cell, so this
+        // margin also reduces the visual halo outside the open bucket.
+        const float3 CarryMargin = min(
+            MPMBucketInteriorHalfExtentsMeters * 0.35f,
+            0.45f * MPMCellSizeMeters);
+        const float3 SafeHalfExtents = MPMBucketInteriorHalfExtentsMeters - CarryMargin;
+        float3 SafeLocalPosition = clamp(
+            BucketInteriorLocal, -SafeHalfExtents, SafeHalfExtents);
+        // The density kernel is wider than the bucket wall. Seat newly carried
+        // points below the mouth so the continuous isosurface appears inside
+        // the cavity instead of as a floating lobe in front of it.
+        SafeLocalPosition.z = min(SafeLocalPosition.z, -0.025f);
+        BucketAttachment = float4(SafeLocalPosition, 1.0f);
+    }
+
+    if (BucketAttachment.w <= 0.5f)
+    {
+        const float FinalSpeed = length(NewVelocity);
+        if (FinalSpeed > 4.0f)
+        {
+            NewVelocity *= 4.0f / FinalSpeed;
+        }
+    }
+
+    Particle.PositionAndMass.xyz = NewPosition;
+    Particle.VelocityAndVolume.xyz = NewVelocity;
+    MPMWriteStress(Particle, ProjectedStress, Compaction);
+    Particle.BucketLocalAndCarried = BucketAttachment;
+    MPMParticlesOut[ParticleIndex] = Particle;
+}

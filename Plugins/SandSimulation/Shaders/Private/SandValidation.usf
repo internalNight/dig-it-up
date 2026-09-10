@@ -1,0 +1,15 @@
+#include "/Engine/Public/Platform.ush"
+#include "/SandSimulation/Private/SandCommon.ush"
+
+RWStructuredBuffer<uint> Output;
+uint Seed;
+
+[numthreads(64, 1, 1)]
+void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
+{
+    const uint Index = DispatchThreadId.x;
+    if (Index < 4)
+    {
+        Output[Index] = Seed + Index * 17u;
+    }
+}

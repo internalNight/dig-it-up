@@ -1,0 +1,36 @@
+# Unreal generated files
+Binaries/
+DerivedDataCache/
+Intermediate/
+Saved/
+.vs/
+
+# Generated project and IDE files
+*.sln
+*.slnx
+*.suo
+*.user
+*.opensdf
+*.sdf
+*.VC.db
+*.VC.opendb
+
+# Plugin build products
+Plugins/*/Binaries/
+Plugins/*/Intermediate/
+
+# Local tooling
+.vscode/
+*.log
+
+# Local captures, test reports, packaged games and portable distributions
+/Artifacts/
+/Builds/
+/Releases/
+
+# Local credentials and environment overrides
+.env
+.env.*
+!.env.example
+*.pem
+*.key
