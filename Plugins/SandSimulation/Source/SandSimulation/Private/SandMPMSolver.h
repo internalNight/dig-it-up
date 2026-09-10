@@ -56,13 +56,13 @@ public:
         SHADER_PARAMETER(FVector3f, MPMPhysicalDomainMinimumMeters)
         SHADER_PARAMETER(FVector3f, MPMPhysicalDomainMaximumMeters)
         SHADER_PARAMETER(uint32, MPMToolColliderCount)
-        SHADER_PARAMETER_ARRAY(FVector4f, MPMToolCentersMeters, [8])
-        SHADER_PARAMETER_ARRAY(FVector4f, MPMToolAxesX, [8])
-        SHADER_PARAMETER_ARRAY(FVector4f, MPMToolAxesY, [8])
-        SHADER_PARAMETER_ARRAY(FVector4f, MPMToolAxesZ, [8])
-        SHADER_PARAMETER_ARRAY(FVector4f, MPMToolHalfExtentsMeters, [8])
-        SHADER_PARAMETER_ARRAY(FVector4f, MPMToolLinearVelocitiesMetersPerSecond, [8])
-        SHADER_PARAMETER_ARRAY(FVector4f, MPMToolAngularVelocitiesRadiansPerSecond, [8])
+        SHADER_PARAMETER_ARRAY(FVector4f, MPMToolCentersMeters, [32])
+        SHADER_PARAMETER_ARRAY(FVector4f, MPMToolAxesX, [32])
+        SHADER_PARAMETER_ARRAY(FVector4f, MPMToolAxesY, [32])
+        SHADER_PARAMETER_ARRAY(FVector4f, MPMToolAxesZ, [32])
+        SHADER_PARAMETER_ARRAY(FVector4f, MPMToolHalfExtentsMeters, [32])
+        SHADER_PARAMETER_ARRAY(FVector4f, MPMToolLinearVelocitiesMetersPerSecond, [32])
+        SHADER_PARAMETER_ARRAY(FVector4f, MPMToolAngularVelocitiesRadiansPerSecond, [32])
         SHADER_PARAMETER_RDG_BUFFER_UAV(RWStructuredBuffer<uint32>, MPMGridScalars)
         SHADER_PARAMETER_RDG_BUFFER_UAV(RWStructuredBuffer<uint32>, MPMToolImpulseScalars)
     END_SHADER_PARAMETER_STRUCT()
@@ -91,13 +91,13 @@ public:
         SHADER_PARAMETER(FVector3f, MPMPhysicalDomainMinimumMeters)
         SHADER_PARAMETER(FVector3f, MPMPhysicalDomainMaximumMeters)
         SHADER_PARAMETER(uint32, MPMToolColliderCount)
-        SHADER_PARAMETER_ARRAY(FVector4f, MPMToolCentersMeters, [8])
-        SHADER_PARAMETER_ARRAY(FVector4f, MPMToolAxesX, [8])
-        SHADER_PARAMETER_ARRAY(FVector4f, MPMToolAxesY, [8])
-        SHADER_PARAMETER_ARRAY(FVector4f, MPMToolAxesZ, [8])
-        SHADER_PARAMETER_ARRAY(FVector4f, MPMToolHalfExtentsMeters, [8])
-        SHADER_PARAMETER_ARRAY(FVector4f, MPMToolLinearVelocitiesMetersPerSecond, [8])
-        SHADER_PARAMETER_ARRAY(FVector4f, MPMToolAngularVelocitiesRadiansPerSecond, [8])
+        SHADER_PARAMETER_ARRAY(FVector4f, MPMToolCentersMeters, [32])
+        SHADER_PARAMETER_ARRAY(FVector4f, MPMToolAxesX, [32])
+        SHADER_PARAMETER_ARRAY(FVector4f, MPMToolAxesY, [32])
+        SHADER_PARAMETER_ARRAY(FVector4f, MPMToolAxesZ, [32])
+        SHADER_PARAMETER_ARRAY(FVector4f, MPMToolHalfExtentsMeters, [32])
+        SHADER_PARAMETER_ARRAY(FVector4f, MPMToolLinearVelocitiesMetersPerSecond, [32])
+        SHADER_PARAMETER_ARRAY(FVector4f, MPMToolAngularVelocitiesRadiansPerSecond, [32])
         SHADER_PARAMETER(uint32, MPMBucketInteriorEnabled)
         SHADER_PARAMETER(float, MPMBucketInteriorDampingPerSecond)
         SHADER_PARAMETER(FVector3f, MPMBucketInteriorCenterMeters)
@@ -109,6 +109,7 @@ public:
         SHADER_PARAMETER(FVector3f, MPMBucketInteriorAngularVelocityRadiansPerSecond)
         SHADER_PARAMETER_RDG_BUFFER_SRV(StructuredBuffer<FParticleData>, MPMParticlesIn)
         SHADER_PARAMETER_RDG_BUFFER_SRV(StructuredBuffer<uint32>, MPMGridScalarsIn)
+        SHADER_PARAMETER_RDG_BUFFER_UAV(RWStructuredBuffer<uint32>, MPMToolImpulseScalars)
         SHADER_PARAMETER_RDG_BUFFER_UAV(RWStructuredBuffer<FParticleData>, MPMParticlesOut)
     END_SHADER_PARAMETER_STRUCT()
 };
@@ -148,6 +149,13 @@ struct FRuntimeSimulationState
 
 struct FToolOrientedBoxState
 {
+    // Optional analytic machine motion evaluated at each MPM substep.
+    FVector3f BaseVelocity = FVector3f::ZeroVector;
+    uint8 Motion = 0; // 0 static sample, 1 drum rotor, 2 closed-loop chain
+    FVector3f MotionOrigin = FVector3f::ZeroVector;
+    FQuat4f MotionRotation = FQuat4f::Identity;
+    float Phase = 0;
+    float Speed = 0;
     FVector3f CenterMeters = FVector3f::ZeroVector;
     FVector3f AxisX = FVector3f(1.0f, 0.0f, 0.0f);
     FVector3f AxisY = FVector3f(0.0f, 1.0f, 0.0f);
@@ -157,9 +165,11 @@ struct FToolOrientedBoxState
     FVector3f AngularVelocityRadiansPerSecond = FVector3f::ZeroVector;
 };
 
+FToolOrientedBoxState SampleMachineCollider(const FToolOrientedBoxState& C, float Time);
+
 struct FToolColliderState
 {
-    static constexpr uint32 MaxColliderCount = 8;
+    static constexpr uint32 MaxColliderCount = 32;
     uint32 ColliderCount = 0;
     TStaticArray<FToolOrientedBoxState, MaxColliderCount> Colliders;
     bool bBucketInteriorEnabled = false;
@@ -176,6 +186,8 @@ struct FToolColliderState
 struct FToolInteractionResult
 {
     /** Momentum transferred from the tool to sand over this outer simulation step (kg*m/s). */
+    TStaticArray<FVector3f, 32> ColliderLinear{};
+    TStaticArray<FVector3f, 32> ColliderAngular{};
     FVector3f SandLinearImpulseKgMetersPerSecond = FVector3f::ZeroVector;
     /** Angular impulse about the tool center transferred from the tool to sand (kg*m^2/s). */
     FVector3f SandAngularImpulseKgMetersSquaredPerSecond = FVector3f::ZeroVector;

@@ -534,7 +534,7 @@ bool ASandSurfacePreviewActor::GenerateSurfaceFromParticlePositions(
     Particles.Reserve(ParticlePositionsMeters.Num());
     for (const FVector3f& Position : ParticlePositionsMeters)
     {
-        Particles.Add({ FVector4f(Position, 1.0f) });
+        Particles.Add({ FVector4f(Position, ParticleDensityWeight) });
     }
     const int32 ParticleCount = Particles.Num();
     const double RequestStartSeconds = FPlatformTime::Seconds();

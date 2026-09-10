@@ -34,13 +34,13 @@ float3 MPMGridOriginMeters;
 float3 MPMPhysicalDomainMinimumMeters;
 float3 MPMPhysicalDomainMaximumMeters;
 uint MPMToolColliderCount;
-float4 MPMToolCentersMeters[8];
-float4 MPMToolAxesX[8];
-float4 MPMToolAxesY[8];
-float4 MPMToolAxesZ[8];
-float4 MPMToolHalfExtentsMeters[8];
-float4 MPMToolLinearVelocitiesMetersPerSecond[8];
-float4 MPMToolAngularVelocitiesRadiansPerSecond[8];
+float4 MPMToolCentersMeters[32];
+float4 MPMToolAxesX[32];
+float4 MPMToolAxesY[32];
+float4 MPMToolAxesZ[32];
+float4 MPMToolHalfExtentsMeters[32];
+float4 MPMToolLinearVelocitiesMetersPerSecond[32];
+float4 MPMToolAngularVelocitiesRadiansPerSecond[32];
 uint MPMBucketInteriorEnabled;
 float MPMBucketInteriorDampingPerSecond;
 float3 MPMBucketInteriorCenterMeters;
@@ -85,6 +85,19 @@ void MPMAtomicAddToolFloat(const uint ScalarIndex, const float Value)
         ExpectedBits = OriginalBits;
     }
     while (true);
+}
+
+void RecordContact(uint Index, float3 Delta, float3 Impulse)
+{
+    if (!any(abs(Impulse)>1.e-10f)) return;
+    float3 Angular = cross(Delta, Impulse);
+    uint Base = 6u + Index*6u;
+    MPMAtomicAddToolFloat(Base, Impulse.x);
+    MPMAtomicAddToolFloat(Base+1u, Impulse.y);
+    MPMAtomicAddToolFloat(Base+2u, Impulse.z);
+    MPMAtomicAddToolFloat(Base+3u, Angular.x);
+    MPMAtomicAddToolFloat(Base+4u, Angular.y);
+    MPMAtomicAddToolFloat(Base+5u, Angular.z);
 }
 
 uint MPMFlattenGridNode(const uint3 Node)
@@ -267,7 +280,7 @@ void MPMUpdateGridCS(uint3 DispatchThreadId : SV_DispatchThreadID)
     }
 
     [loop]
-    for (uint ToolIndex = 0u; ToolIndex < min(MPMToolColliderCount, 8u); ++ToolIndex)
+    for (uint ToolIndex = 0u; ToolIndex < min(MPMToolColliderCount, 32u); ++ToolIndex)
     {
         const float3 VelocityBeforeToolContact = Velocity;
         const float3 ToolCenter = MPMToolCentersMeters[ToolIndex].xyz;
@@ -327,6 +340,7 @@ void MPMUpdateGridCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 
 
         const float3 SandImpulse = Mass * (Velocity - VelocityBeforeToolContact);
+        RecordContact(ToolIndex, ToolDelta, SandImpulse);
         // The runtime collider order is two tracks followed by five bucket
         // plates. Track reaction is handled by the chassis support model.
         if (ToolIndex >= 2u &&
@@ -475,12 +489,13 @@ void MPMG2PCS(uint3 DispatchThreadId : SV_DispatchThreadID)
     // Grid contact transfers momentum efficiently, while this material-point pass
     // prevents individual samples from leaking through bucket plates after G2P interpolation.
     [loop]
-    for (uint ToolIndex = 0u; ToolIndex < min(MPMToolColliderCount, 8u); ++ToolIndex)
+    for (uint ToolIndex = 0u; ToolIndex < min(MPMToolColliderCount, 32u); ++ToolIndex)
     {
         const float3 ToolCenter = MPMToolCentersMeters[ToolIndex].xyz;
         const float3 ToolAxisX = MPMToolAxesX[ToolIndex].xyz;
         const float3 ToolAxisY = MPMToolAxesY[ToolIndex].xyz;
         const float3 ToolAxisZ = MPMToolAxesZ[ToolIndex].xyz;
+        const float3 VelocityBeforeParticleContact = NewVelocity;
         const float3 ToolDelta = NewPosition - ToolCenter;
         const float3 LocalPosition = float3(
             dot(ToolDelta, ToolAxisX),
@@ -531,6 +546,7 @@ void MPMG2PCS(uint3 DispatchThreadId : SV_DispatchThreadID)
                 NewVelocity = ToolVelocityAtParticle + RelativeVelocity;
             }
         }
+        RecordContact(ToolIndex, ToolDelta, Particle.PositionAndMass.w * (NewVelocity-VelocityBeforeParticleContact));
     }
 
     bool IsInsideBucketInterior = false;

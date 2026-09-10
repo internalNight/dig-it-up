@@ -157,7 +157,7 @@ bool FSandColumnCollapseTest::RunTest(const FString& Parameters)
                 FRDGBufferDesc::CreateStructuredDesc(sizeof(uint32), GridScalarCount),
                 TEXT("Sand.Collapse.Grid"));
             FRDGBufferRef DisabledToolImpulseBuffer = GraphBuilder.CreateBuffer(
-                FRDGBufferDesc::CreateStructuredDesc(sizeof(uint32), 6),
+                FRDGBufferDesc::CreateStructuredDesc(sizeof(uint32), 6+32*6),
                 TEXT("Sand.Collapse.DisabledToolImpulse"));
             AddClearUAVPass(GraphBuilder, GraphBuilder.CreateUAV(DisabledToolImpulseBuffer), 0u);
             FRDGBufferRef CurrentParticles = ParticleA;
@@ -228,6 +228,7 @@ bool FSandColumnCollapseTest::RunTest(const FString& Parameters)
                 G2P->MPMBucketInteriorEnabled = 0u;
                 G2P->MPMParticlesIn = GraphBuilder.CreateSRV(CurrentParticles);
                 G2P->MPMGridScalarsIn = GraphBuilder.CreateSRV(GridBuffer);
+                G2P->MPMToolImpulseScalars = GraphBuilder.CreateUAV(DisabledToolImpulseBuffer);
                 G2P->MPMParticlesOut = GraphBuilder.CreateUAV(NextParticles);
                 FComputeShaderUtils::AddPass(
                     GraphBuilder,

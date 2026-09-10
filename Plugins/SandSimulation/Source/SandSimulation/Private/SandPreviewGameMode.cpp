@@ -18,6 +18,7 @@
 #include "Materials/MaterialInstanceDynamic.h"
 #include "SandCollapseSurfacePreviewActor.h"
 #include "SandExcavatorPawn.h"
+#include "SandRoadheaderPawn.h"
 #include "SandHUD.h"
 #include "SandLevelSettings.h"
 #include "SandFloorExposure.h"
@@ -153,17 +154,44 @@ void ASandPreviewGameMode::BeginPlay()
 
     if (APlayerController* PlayerController = World->GetFirstPlayerController())
     {
-        const bool bFixture = FParse::Param(FCommandLine::Get(), TEXT("SandVictoryTest"));
-        ASandExcavatorPawn* Excavator = World->SpawnActor<ASandExcavatorPawn>(
-            bFixture ? FVector(-210.0,-160.0,20.5) : FVector(-160.0, 0.0, SandDepthCm + 8.0f),
-            FRotator::ZeroRotator);
-        PlayerController->Possess(Excavator);
+        PlayerController->bShowMouseCursor=true;
+        PlayerController->bEnableClickEvents=true;
+        PlayerController->SetInputMode(FInputModeGameAndUI());
+        const bool bRoad=FParse::Param(FCommandLine::Get(),TEXT("SandRoadheader")) || FParse::Param(FCommandLine::Get(),TEXT("SandRoadheaderBench"));
+        if(bRoad) SelectVehicle(true);
+        else if(FParse::Param(FCommandLine::Get(),TEXT("SandExcavator")) ||
+            FParse::Param(FCommandLine::Get(),TEXT("SandAutopilot")) ||
+            FParse::Param(FCommandLine::Get(),TEXT("SandVictoryTest")) ||
+            FParse::Param(FCommandLine::Get(),TEXT("SandBoundaryTest")) ||
+            FParse::Param(FCommandLine::Get(),TEXT("SandBoomRaiseTest")) ||
+            FParse::Param(FCommandLine::Get(),TEXT("SandSlopeCoastTest"))) SelectVehicle(false);
     }
+
+}
+
+void ASandPreviewGameMode::SelectVehicle(bool bRoadheader)
+{
+    if(!bSelectingVehicle) return;
+    auto* PC=GetWorld()->GetFirstPlayerController();
+    if(!PC) return;
+    const bool Bench=FParse::Param(FCommandLine::Get(),TEXT("SandRoadheaderBench"));
+    const bool Fixture=FParse::Param(FCommandLine::Get(),TEXT("SandVictoryTest"));
+    FVector Position=Bench?FVector(0,0,36):Fixture?FVector(-210,-160,20.5):FVector(-100,0,GetDefault<USandLevelSettings>()->SandDepthMeters*100+8);
+    FActorSpawnParameters Params;
+    Params.SpawnCollisionHandlingOverride=ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+    auto* Pawn=GetWorld()->SpawnActor<ASandExcavatorPawn>(bRoadheader?ASandRoadheaderPawn::StaticClass():ASandExcavatorPawn::StaticClass(),Position,FRotator::ZeroRotator,Params);
+    if(!Pawn) return;
+    PC->Possess(Pawn);
+    PC->bShowMouseCursor=false;
+    PC->SetInputMode(FInputModeGameOnly());
+    bSelectingVehicle=false;
+    UE_LOG(LogTemp,Display,TEXT("Selected vehicle: %s"),bRoadheader?TEXT("Roadheader"):TEXT("Excavator"));
 
 }
 
 void ASandPreviewGameMode::CheckExposedFloor(const TArray<FVector>& Vertices, const TArray<int32>& Indices)
 {
+    if (bSelectingVehicle || FParse::Param(FCommandLine::Get(),TEXT("SandRoadheaderBench"))) return;
     if (Vertices.IsEmpty() || Indices.IsEmpty() || FirstExposureTime >= 0.0f || GetWorld()->GetTimeSeconds()-LastExposureCheck < 0.25f) { return; }
     LastExposureCheck = GetWorld()->GetTimeSeconds();
     FVector2D Center;

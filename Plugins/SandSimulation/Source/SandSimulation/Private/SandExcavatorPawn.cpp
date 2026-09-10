@@ -1,4 +1,5 @@
 #include "SandExcavatorPawn.h"
+#include "SandRoadheaderPawn.h"
 
 #include "Camera/CameraComponent.h"
 #include "Components/BoxComponent.h"
@@ -374,6 +375,7 @@ void ASandExcavatorPawn::Tick(const float DeltaSeconds)
         bBrake = PlayerController->IsInputKeyDown(EKeys::SpaceBar);
     }
 
+    if (IsA(ASandRoadheaderPawn::StaticClass())) { BoomInput = StickInput = BucketInput = 0; }
     ApplySandSuspension(DeltaSeconds, bBrake);
 
     FVector HorizontalForward = GetActorForwardVector();

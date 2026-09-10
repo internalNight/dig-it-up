@@ -37,6 +37,8 @@ public:
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Sand|Surface", meta = (ClampMin = "0.1", ClampMax = "5.0"))
     float IsoDensity = 1.10f;
 
+    float ParticleDensityWeight = 1.0f;
+
     UFUNCTION(BlueprintCallable, CallInEditor, Category = "Sand|Surface")
     void GeneratePreviewSurface();
 

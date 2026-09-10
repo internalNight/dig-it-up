@@ -1,4 +1,7 @@
 #include "SandMPMSolver.h"
+#include "SandMachineKinematics.h"
+#include "Misc/CommandLine.h"
+#include "Misc/Parse.h"
 #include "SandLevelSettings.h"
 
 #include "Async/Async.h"
@@ -158,7 +161,7 @@ void EnqueueValidatedColumnCollapse(
                 FRDGBufferDesc::CreateStructuredDesc(sizeof(uint32), GridScalarCount),
                 TEXT("Sand.RuntimeCollapse.Grid"));
             FRDGBufferRef DisabledToolImpulseBuffer = GraphBuilder.CreateBuffer(
-                FRDGBufferDesc::CreateStructuredDesc(sizeof(uint32), 6),
+                FRDGBufferDesc::CreateStructuredDesc(sizeof(uint32), 6 + 32*6),
                 TEXT("Sand.RuntimeCollapse.DisabledToolImpulse"));
             AddClearUAVPass(GraphBuilder, GraphBuilder.CreateUAV(DisabledToolImpulseBuffer), 0u);
             FRDGBufferRef CurrentParticles = ParticleA;
@@ -230,6 +233,7 @@ void EnqueueValidatedColumnCollapse(
                 G2P->MPMBucketInteriorEnabled = 0u;
                 G2P->MPMParticlesIn = GraphBuilder.CreateSRV(CurrentParticles);
                 G2P->MPMGridScalarsIn = GraphBuilder.CreateSRV(GridBuffer);
+                G2P->MPMToolImpulseScalars = GraphBuilder.CreateUAV(DisabledToolImpulseBuffer);
                 G2P->MPMParticlesOut = GraphBuilder.CreateUAV(NextParticles);
                 FComputeShaderUtils::AddPass(
                     GraphBuilder,
@@ -293,18 +297,82 @@ TSharedRef<FRuntimeSimulationState, ESPMode::ThreadSafe> CreateRuntimeSandboxSim
     TSharedRef<FRuntimeSimulationState, ESPMode::ThreadSafe> State =
         MakeShared<FRuntimeSimulationState, ESPMode::ThreadSafe>();
     State->Material = Material;
-    State->CellSize = 0.0625f;
-    State->InternalDeltaSeconds = 1.0f / 300.0f;
+    State->CellSize = 0.05f;
+    FString Quality;
+    FParse::Value(FCommandLine::Get(), TEXT("SandQuality="), Quality);
+    if (Quality == TEXT("Legacy")) State->CellSize = 0.0625f;
+    if (Quality == TEXT("Fine")) State->CellSize = 0.03125f;
+    if (Quality == TEXT("Ultra")) State->CellSize = 0.025f;
+    const bool bBench = FParse::Param(FCommandLine::Get(), TEXT("SandRoadheaderBench"));
+    if (bBench && Quality.IsEmpty()) State->CellSize = 0.025f;
+    State->InternalDeltaSeconds = 1.0f / (State->CellSize <= 0.025f ? 1200.0f : State->CellSize <= 0.03125f ? 900.0f : State->CellSize <= 0.05f ? 600.0f : 300.0f);
     State->PhysicalMinimum = FVector3f(-2.5f, -2.5f, 0.0f);
     const float Depth = GetDefault<USandLevelSettings>()->SandDepthMeters;
     State->PhysicalMaximum = FVector3f(2.5f, 2.5f, Depth + 1.0f);
-    State->GridOrigin = FVector3f(-2.5625f, -2.5625f, -0.0625f);
-    State->GridSize = FIntVector(83, 83, FMath::CeilToInt((Depth + 1.0f) / State->CellSize) + 3);
-    State->InitialParticles = MakeInitialSandbox(
+    State->GridOrigin = State->PhysicalMinimum - FVector3f(State->CellSize);
+    State->GridSize = FIntVector(FMath::CeilToInt(5.0f/State->CellSize)+3,
+        FMath::CeilToInt(5.0f/State->CellSize)+3, FMath::CeilToInt((Depth+1.0f)/State->CellSize)+3);
+    if(!bBench) State->InitialParticles = MakeInitialSandbox(
         State->CellSize,
         Material.BulkDensityKgPerM3,
         Material.InternalFrictionAngleDegrees, Depth);
+    if (bBench)
+    {
+        State->PhysicalMinimum = FVector3f(-1.2f,-0.6f,0);
+        State->PhysicalMaximum = FVector3f(1.2f,0.6f,1.1f);
+        State->GridOrigin = State->PhysicalMinimum-FVector3f(State->CellSize);
+        const FVector3f Size = (State->PhysicalMaximum-State->PhysicalMinimum)/State->CellSize;
+        State->GridSize = FIntVector(FMath::CeilToInt(Size.X)+3,FMath::CeilToInt(Size.Y)+3,FMath::CeilToInt(Size.Z)+3);
+        State->InitialParticles.Reset();
+        const float H=State->CellSize;
+        for(float Z=0.3f+H/2; Z<0.65f; Z+=H)
+        for(float Y=-0.2f+H/2; Y<0.2f; Y+=H)
+        for(float X=0.65f+H/2; X<1.05f; X+=H)
+        {
+            FParticleData P;
+            FMemory::Memzero(P);
+            P.PositionAndMass=FVector4f(X,Y,Z,Material.BulkDensityKgPerM3*H*H*H);
+            P.VelocityAndVolume=FVector4f(0,0,0,H*H*H);
+            P.StressRow0AndCompaction.W=0.45f;
+            State->InitialParticles.Add(P);
+        }
+    }
+    UE_LOG(LogTemp,Display,TEXT("MPM quality: cell %.5f m, dt %.6f s, particles %d, grid %d x %d x %d"),
+        State->CellSize,State->InternalDeltaSeconds,State->InitialParticles.Num(),State->GridSize.X,State->GridSize.Y,State->GridSize.Z);
     return State;
+}
+
+FToolOrientedBoxState SampleMachineCollider(const FToolOrientedBoxState& C, float Time)
+{
+    auto R=C;
+    if (C.Motion==0) { R.CenterMeters += C.LinearVelocityMetersPerSecond*Time; return R; }
+    FVector3f P, X, Y(0,1,0), Z;
+    if(C.Motion==1)
+    {
+        const float A=C.Phase+C.Speed*Time;
+        X=FVector3f(FMath::Cos(A),0,-FMath::Sin(A));
+        Z=FVector3f::CrossProduct(X,Y);
+        P=FVector3f(0.51f,0,0.01f)+0.145f*X;
+        R.AngularVelocityRadiansPerSecond=C.MotionRotation.RotateVector(Y*C.Speed);
+        R.LinearVelocityMetersPerSecond=C.MotionRotation.RotateVector(FVector3f::CrossProduct(Y*C.Speed,0.145f*X));
+    }
+    else
+    {
+        Sand::Machine::ChainPose(C.Phase+C.Speed*Time,P,X);
+        Z=FVector3f::CrossProduct(X,Y);
+        R.LinearVelocityMetersPerSecond=C.MotionRotation.RotateVector(X*C.Speed);
+        // Angular velocity is nonzero only on the semicircular sprockets.
+        float S=FMath::Fmod(C.Phase+C.Speed*Time,Sand::Machine::Loop);
+        if(S<0) S+=Sand::Machine::Loop;
+        bool Turn=(S>Sand::Machine::Run && S<Sand::Machine::Run+PI*Sand::Machine::Radius) || S>2*Sand::Machine::Run+PI*Sand::Machine::Radius;
+        R.AngularVelocityRadiansPerSecond=C.MotionRotation.RotateVector(Y*(Turn ? -C.Speed/Sand::Machine::Radius : 0));
+    }
+    R.CenterMeters=C.MotionOrigin+C.MotionRotation.RotateVector(P)+C.BaseVelocity*Time;
+    R.LinearVelocityMetersPerSecond+=C.BaseVelocity;
+    R.AxisX=C.MotionRotation.RotateVector(X);
+    R.AxisY=C.MotionRotation.RotateVector(Y);
+    R.AxisZ=C.MotionRotation.RotateVector(Z);
+    return R;
 }
 
 void EnqueueRuntimeSimulationSteps(
@@ -338,7 +406,7 @@ void EnqueueRuntimeSimulationSteps(
                 FRDGBufferDesc::CreateStructuredDesc(sizeof(uint32), 4 * GridNodeCount),
                 TEXT("Sand.Runtime.Grid"));
             FRDGBufferRef ToolImpulseBuffer = GraphBuilder.CreateBuffer(
-                FRDGBufferDesc::CreateStructuredDesc(sizeof(uint32), 6),
+                FRDGBufferDesc::CreateStructuredDesc(sizeof(uint32), 6 + 32*6),
                 TEXT("Sand.Runtime.ToolImpulse"));
             AddClearUAVPass(GraphBuilder, GraphBuilder.CreateUAV(ToolImpulseBuffer), 0u);
 
@@ -380,7 +448,7 @@ void EnqueueRuntimeSimulationSteps(
                 for (uint32 ColliderIndex = 0; ColliderIndex < FToolColliderState::MaxColliderCount;
                     ++ColliderIndex)
                 {
-                    const FToolOrientedBoxState& Collider = Tool.Colliders[ColliderIndex];
+                    const FToolOrientedBoxState Collider = SampleMachineCollider(Tool.Colliders[ColliderIndex], (Step+0.5f)*State->InternalDeltaSeconds);
                     Update->MPMToolCentersMeters[ColliderIndex] = FVector4f(Collider.CenterMeters, 0.0f);
                     Update->MPMToolAxesX[ColliderIndex] = FVector4f(Collider.AxisX, 0.0f);
                     Update->MPMToolAxesY[ColliderIndex] = FVector4f(Collider.AxisY, 0.0f);
@@ -425,7 +493,7 @@ void EnqueueRuntimeSimulationSteps(
                 for (uint32 ColliderIndex = 0; ColliderIndex < FToolColliderState::MaxColliderCount;
                     ++ColliderIndex)
                 {
-                    const FToolOrientedBoxState& Collider = Tool.Colliders[ColliderIndex];
+                    const FToolOrientedBoxState Collider = SampleMachineCollider(Tool.Colliders[ColliderIndex], (Step+0.5f)*State->InternalDeltaSeconds);
                     G2P->MPMToolCentersMeters[ColliderIndex] = FVector4f(Collider.CenterMeters, 0.0f);
                     G2P->MPMToolAxesX[ColliderIndex] = FVector4f(Collider.AxisX, 0.0f);
                     G2P->MPMToolAxesY[ColliderIndex] = FVector4f(Collider.AxisY, 0.0f);
@@ -450,6 +518,7 @@ void EnqueueRuntimeSimulationSteps(
                     Tool.BucketInterior.AngularVelocityRadiansPerSecond;
                 G2P->MPMParticlesIn = GraphBuilder.CreateSRV(CurrentParticles);
                 G2P->MPMGridScalarsIn = GraphBuilder.CreateSRV(GridBuffer);
+                G2P->MPMToolImpulseScalars = GraphBuilder.CreateUAV(ToolImpulseBuffer);
                 G2P->MPMParticlesOut = GraphBuilder.CreateUAV(NextParticles);
                 FComputeShaderUtils::AddPass(
                     GraphBuilder,
@@ -484,7 +553,7 @@ void EnqueueRuntimeSimulationSteps(
                         FRHICommandListImmediate& ReadbackCommandList)
                     {
                         const uint32 ParticleBytes = ReadbackParticles->Num() * sizeof(FParticleData);
-                        constexpr uint32 ToolBytes = 6 * sizeof(float);
+                        constexpr uint32 ToolBytes = (6 + 32*6) * sizeof(float);
                         FRHIGPUBufferReadback ParticleReadback(TEXT("Sand.PersistentMPM.ParticleReadback"));
                         FRHIGPUBufferReadback ToolReadback(TEXT("Sand.PersistentMPM.ToolReadback"));
                         if (bReadbackParticles)
@@ -515,6 +584,12 @@ void EnqueueRuntimeSimulationSteps(
                             ToolValues[0], ToolValues[1], ToolValues[2]);
                         ToolInteraction->SandAngularImpulseKgMetersSquaredPerSecond = FVector3f(
                             ToolValues[3], ToolValues[4], ToolValues[5]);
+                        for (uint32 I=0; I<32; ++I)
+                        {
+                            const float* V = ToolValues + 6 + 6*I;
+                            ToolInteraction->ColliderLinear[I] = FVector3f(V[0],V[1],V[2]);
+                            ToolInteraction->ColliderAngular[I] = FVector3f(V[3],V[4],V[5]);
+                        }
                         ToolReadback.Unlock();
                     });
             }

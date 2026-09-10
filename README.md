@@ -1,5 +1,20 @@
 # Dig It Up
 
+## Experimental physical roadheader (2026-09-10)
+
+Run `PlayMachines.cmd` to choose an excavator or a roadheader. The roadheader uses
+a rotating paddle drum and a closed-loop scraper conveyor with MPM solid contact;
+it does not capture or teleport sand. Press T for motors, G to reverse, Q/E to
+raise/lower the cutting assembly and C for the internal view. `PlayRoadheaderBench.cmd`
+opens the finer isolated transport experiment.
+
+The new default full-sandbox grid is 5 cm / 300,000 material points / 600 Hz
+internal steps. `-Quality Fine` selects 3.125 cm / 1,228,800 points / 900 Hz;
+this is substantially slower on the tested RTX 4060 Ti 8 GB. The 2.5 cm option
+uses 1,200 Hz steps and has been tested on the small bench, not the full sandbox.
+See [implementation, controls and measured limitations](Docs/RoadheaderPrototype.md).
+The portable-build notes below retain the original excavator baseline.
+
 A Windows single-player digging prototype built with Unreal Engine 5.8. The internal
 UE project/module name remains `SandExcavator`.
 
@@ -18,7 +33,7 @@ UE project/module name remains `SandExcavator`.
    parameters for your installation. `PlaySandPreview.cmd` is a convenience launcher
    for the original workspace, not a prebuilt game distributed by a source clone.
 
-The current Easy level has 1.5 m of active sand, 6.25 cm physical spacing, 4 cm
+The original portable Easy build has 1.5 m of active sand, 6.25 cm physical spacing, 4 cm
 surface reconstruction, silver-grey material and an 85-degree boom raise limit.
 It requires Windows x64 and a DX12/SM6-capable GPU. There is no terrain save/load.
 Only an RTX 4070 Laptop / 16 GB system has been tested; framerates are targets, not

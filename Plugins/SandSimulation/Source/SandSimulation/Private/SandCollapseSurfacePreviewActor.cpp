@@ -2,6 +2,7 @@
 
 #include "SandMPMSolver.h"
 #include "SandExcavatorPawn.h"
+#include "SandRoadheaderPawn.h"
 #include "SandLevelSettings.h"
 #include "SandPreviewGameMode.h"
 
@@ -15,7 +16,7 @@ ASandCollapseSurfacePreviewActor::ASandCollapseSurfacePreviewActor()
     PrimaryActorTick.bCanEverTick = true;
     PrimaryActorTick.TickInterval = 0.0f;
     bBuildOnBeginPlay = false;
-    VoxelSizeMeters = 0.040f;
+    VoxelSizeMeters = 0.030f;
     KernelRadiusMeters = 0.085f;
     IsoDensity = 1.10f;
     RuntimeMaterial.InternalFrictionAngleDegrees = 40.0f;
@@ -74,6 +75,12 @@ void ASandCollapseSurfacePreviewActor::BeginPlay()
             }
         }
     }
+    if (FParse::Param(FCommandLine::Get(),TEXT("SandRoadheaderBench")))
+    {
+        VoxelSizeMeters=0.02f;
+        KernelRadiusMeters=0.0425f;
+    }
+    ParticleDensityWeight=FMath::Pow(SimulationState->CellSize * (0.085f/0.0625f) / KernelRadiusMeters,3.0f);
     const auto& InitialParticles = SimulationState->InitialParticles;
     UE_LOG(LogTemp, Display, TEXT("Runtime soil: friction %.1f deg, cohesion %.1f Pa, damping %.2f /s; %d particles"),
         Material.InternalFrictionAngleDegrees, Material.CohesionPa,
@@ -86,8 +93,8 @@ void ASandCollapseSurfacePreviewActor::BeginPlay()
     }
     GenerateSurfaceFromParticlePositions(
         MoveTemp(InitialPositions),
-        FVector3f(-2.60f, -2.60f, -0.10f),
-        FVector3f(2.60f, 2.60f, GetDefault<USandLevelSettings>()->SandDepthMeters + 1.05f));
+        SimulationState->PhysicalMinimum-FVector3f(.10f),
+        SimulationState->PhysicalMaximum+FVector3f(.10f));
 
 }
 
@@ -107,6 +114,8 @@ void ASandCollapseSurfacePreviewActor::OnSurfaceMeshUpdated(
 void ASandCollapseSurfacePreviewActor::Tick(const float DeltaSeconds)
 {
     Super::Tick(DeltaSeconds);
+    if(auto* Mode=Cast<ASandPreviewGameMode>(GetWorld()->GetAuthGameMode()))
+        if(Mode->IsSelectingVehicle()) return;
     ToolSampleElapsedSeconds += DeltaSeconds;
     if (!SimulationState.IsValid() || bSimulationStepInFlight)
     {
@@ -120,7 +129,8 @@ void ASandCollapseSurfacePreviewActor::Tick(const float DeltaSeconds)
         return;
     }
     const uint32 FramesToAdvance = static_cast<uint32>(FMath::Clamp(
-        FMath::FloorToInt(SimulationAccumulatorSeconds / FixedFrameSeconds), 1, 2));
+        FMath::FloorToInt(SimulationAccumulatorSeconds / FixedFrameSeconds), 1,
+            FParse::Param(FCommandLine::Get(),TEXT("SandRoadheaderBench")) ? 1 : 2));
     SimulationAccumulatorSeconds -= FramesToAdvance * FixedFrameSeconds;
     bSimulationStepInFlight = true;
 
@@ -133,7 +143,9 @@ void ASandCollapseSurfacePreviewActor::Tick(const float DeltaSeconds)
         }
     }
     Sand::MPM::FToolColliderState Tool;
-    if (Excavator.IsValid())
+    auto* Roadheader=Cast<ASandRoadheaderPawn>(Excavator.Get());
+    if (Roadheader) { Roadheader->BuildPhysicalTool(Tool,0); }
+    else if (Excavator.IsValid())
     {
         const FVector3f ChassisLinearVelocity(
             Excavator->ChassisBody->GetPhysicsLinearVelocity() / 100.0);
@@ -250,7 +262,7 @@ void ASandCollapseSurfacePreviewActor::Tick(const float DeltaSeconds)
     const bool bBucketRetentionEnabled = Tool.bBucketInteriorEnabled;
     Sand::MPM::EnqueueRuntimeSimulationSteps(
         SimulationState.ToSharedRef(),
-        10u * FramesToAdvance,
+        FMath::RoundToInt(1.0f/(30.0f*SimulationState->InternalDeltaSeconds)) * FramesToAdvance,
         bRefreshSurface,
         Tool,
         [WeakThis, WeakExcavator, FramesToAdvance, ActiveToolColliderCount,
@@ -272,7 +284,11 @@ void ASandCollapseSurfacePreviewActor::Tick(const float DeltaSeconds)
             int32 CarriedParticleCount = -1;
             float MaximumParticleDisplacementMeters = -1.0f;
 
-            if (WeakExcavator.IsValid())
+            if (auto* Machine=Cast<ASandRoadheaderPawn>(WeakExcavator.Get()))
+            {
+                Machine->CompletePhysicalStep(ToolInteraction,FramesToAdvance/30.0f,Particles);
+            }
+            if (WeakExcavator.IsValid() && WeakExcavator->ChassisBody->IsSimulatingPhysics())
             {
                 // Equal and opposite bucket reaction. The raw grid contact can
                 // jump as individual 10 cm nodes enter a thin plate, so feed a
@@ -377,8 +393,8 @@ void ASandCollapseSurfacePreviewActor::Tick(const float DeltaSeconds)
                 }
                 WeakThis->GenerateSurfaceFromParticlePositions(
                     MoveTemp(Positions),
-                    FVector3f(-2.60f, -2.60f, -0.10f),
-                    FVector3f(2.60f, 2.60f, GetDefault<USandLevelSettings>()->SandDepthMeters + 1.05f));
+                    WeakThis->SimulationState->PhysicalMinimum-FVector3f(.10f),
+                    WeakThis->SimulationState->PhysicalMaximum+FVector3f(.10f));
             }
 
             if (bLogFrame)

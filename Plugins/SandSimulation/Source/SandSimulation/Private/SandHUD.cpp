@@ -8,8 +8,11 @@
 #include "GameFramework/PlayerController.h"
 #include "InputCoreTypes.h"
 #include "SandExcavatorPawn.h"
+#include "SandRoadheaderPawn.h"
 #include "SandPreviewGameMode.h"
 #include "SandLevelSettings.h"
+#include "Misc/CommandLine.h"
+#include "Misc/Parse.h"
 
 void ASandHUD::DrawHUD()
 {
@@ -29,6 +32,25 @@ void ASandHUD::DrawHUD()
     const float LineHeight = 22.0f * UiScale;
     UFont* Font = GEngine->GetSmallFont();
     auto* Mode=Cast<ASandPreviewGameMode>(GetWorld()->GetAuthGameMode());
+    if(Mode && Mode->IsSelectingVehicle())
+    {
+        DrawRect(FLinearColor(.018f,.025f,.045f,1),0,0,Canvas->SizeX,Canvas->SizeY);
+        const float X=Canvas->SizeX*.5f-320*UiScale, Y=Canvas->SizeY*.35f;
+        DrawText(TEXT("DIG IT UP  /  CHOOSE YOUR MACHINE"),FLinearColor(1,.7f,.2f),X,Y-70*UiScale,Font,1.6f*UiScale);
+        DrawRect(FLinearColor(.14f,.19f,.24f,1),X,Y,310*UiScale,160*UiScale);
+        DrawRect(FLinearColor(.22f,.16f,.08f,1),X+330*UiScale,Y,310*UiScale,160*UiScale);
+        DrawText(TEXT("1   EXCAVATOR"),FLinearColor::White,X+15*UiScale,Y+20*UiScale,Font,1.3f*UiScale);
+        DrawText(TEXT("Dig, lift and place with a bucket"),FLinearColor::White,X+15*UiScale,Y+65*UiScale,Font,UiScale);
+        DrawText(TEXT("2   ROADHEADER"),FLinearColor(1,.75f,.3f),X+345*UiScale,Y+20*UiScale,Font,1.3f*UiScale);
+        DrawText(TEXT("Rotating drum + scraper conveyor"),FLinearColor::White,X+345*UiScale,Y+65*UiScale,Font,UiScale);
+        DrawText(TEXT("Click a machine or press 1 / 2"),FLinearColor(.7f,.8f,.9f),X,Y+190*UiScale,Font,UiScale);
+        AddHitBox(FVector2D(X,Y),FVector2D(310,160)*UiScale,TEXT("Excavator"),true);
+        AddHitBox(FVector2D(X+330*UiScale,Y),FVector2D(310,160)*UiScale,TEXT("Roadheader"),true);
+        if(PlayerOwner->WasInputKeyJustPressed(EKeys::One)) Mode->SelectVehicle(false);
+        if(PlayerOwner->WasInputKeyJustPressed(EKeys::Two)) Mode->SelectVehicle(true);
+        if(PlayerOwner->WasInputKeyJustPressed(EKeys::Escape)) PlayerOwner->ConsoleCommand(TEXT("quit"));
+        return;
+    }
     if (Mode && Mode->IsVictoryVisible())
     {
         const float CentreX = Canvas->SizeX * 0.5f;
@@ -69,18 +91,19 @@ void ASandHUD::DrawHUD()
     }
 
     const ASandExcavatorPawn* Excavator = Cast<ASandExcavatorPawn>(PlayerOwner->GetPawn());
+    const auto* Machine=Cast<ASandRoadheaderPawn>(Excavator);
     const float SpeedKmh = Excavator != nullptr
         ? Excavator->GetVelocity().Size2D() * 0.036f
         : 0.0f;
     const int32 Supports = Excavator != nullptr ? Excavator->GetGroundedSupportCount() : 0;
 
     DrawRect(FLinearColor(0.015f, 0.02f, 0.025f, 0.76f), Margin, Margin, 370.0f * UiScale, 80.0f * UiScale);
-    DrawText(TEXT("DIG IT UP  /  EASY"), FLinearColor(1.0f, 0.70f, 0.12f),
+    DrawText(Machine ? TEXT("DIG IT UP  /  ROADHEADER") : TEXT("DIG IT UP  /  EASY"), FLinearColor(1.0f, 0.70f, 0.12f),
         Margin + 12.0f * UiScale, Margin + 8.0f * UiScale, Font, 1.12f * UiScale, false);
     DrawText(FString::Printf(TEXT("Speed  %4.1f km/h    Track support  %d / 4"), SpeedKmh, Supports),
         FLinearColor::White, Margin + 12.0f * UiScale, Margin + 31.0f * UiScale,
         Font, 0.92f * UiScale, false);
-    DrawText(Mode && Mode->HasWon() ? TEXT("VICTORY COMPLETE  -  Free exploration") :
+    DrawText(FParse::Param(FCommandLine::Get(),TEXT("SandRoadheaderBench")) ? TEXT("Transport bench  |  Press T to run motors") : Mode && Mode->HasWon() ? TEXT("VICTORY COMPLETE  -  Free exploration") :
         *FString::Printf(TEXT("Dig %.1f m down. Uncover the RED floor."),GetDefault<USandLevelSettings>()->SandDepthMeters),
         FLinearColor(1.0f,0.65f,0.65f),Margin+12*UiScale,Margin+54*UiScale,Font,0.95f*UiScale,false);
     if (Mode && !Mode->HasWon() && Mode->GetVictoryCountdown()>=0.0f)
@@ -95,14 +118,19 @@ void ASandHUD::DrawHUD()
         const float PanelY = Margin + 90.0f * UiScale;
         DrawRect(FLinearColor(0.015f, 0.02f, 0.025f, 0.72f),
             Margin, PanelY, 270.0f * UiScale, 212.0f * UiScale);
+        if(Machine)
+        {
+            DrawText(FString::Printf(TEXT("Drum %.1f rpm  |  Chain %.2f m/s  |  Load %.1f Nm"),Machine->GetDrumRPM(),Machine->GetConveyorSpeed(),Machine->GetLoadTorque()),
+                FLinearColor(1,.8f,.3f),Margin,Canvas->SizeY-40*UiScale,Font,UiScale);
+        }
         const TCHAR* Lines[] =
         {
             TEXT("W / S       Drive forward / reverse"),
             TEXT("A / D       Steer left / right"),
             TEXT("SPACE       Brake"),
-            TEXT("Q / E       Boom up / down"),
-            TEXT("R / F       Stick in / out"),
-            TEXT("T / G       Bucket curl / dump"),
+            Machine ? TEXT("Q / E       Cutter raise / lower") : TEXT("Q / E       Boom up / down"),
+            Machine ? TEXT("T / G       Motor on-off / reverse") : TEXT("R / F       Stick in / out"),
+            Machine ? TEXT("C           Internal / outside view") : TEXT("T / G       Bucket curl / dump"),
             TEXT("H           Hide / show this help"),
             TEXT("ESC         Quit game")
         };
@@ -134,6 +162,12 @@ void ASandHUD::DrawHUD()
 void ASandHUD::NotifyHitBoxClick(FName BoxName)
 {
     auto* Mode=Cast<ASandPreviewGameMode>(GetWorld()->GetAuthGameMode());
+    if(Mode && Mode->IsSelectingVehicle())
+    {
+        if(BoxName==TEXT("Excavator")) Mode->SelectVehicle(false);
+        if(BoxName==TEXT("Roadheader")) Mode->SelectVehicle(true);
+        return;
+    }
     if (!Mode || !Mode->IsVictoryVisible()) { return; }
     if (BoxName==TEXT("Continue")) { Mode->ContinueExploring(); }
     else if (BoxName==TEXT("Exit") && PlayerOwner) { PlayerOwner->ConsoleCommand(TEXT("quit")); }

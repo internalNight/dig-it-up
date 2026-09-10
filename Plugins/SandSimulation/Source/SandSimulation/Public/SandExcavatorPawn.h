@@ -11,7 +11,7 @@ class UStaticMeshComponent;
 
 /** Compact Chaos-driven excavator used as the first interactive sand tool. */
 UCLASS()
-class SANDSIMULATION_API ASandExcavatorPawn final : public APawn
+class SANDSIMULATION_API ASandExcavatorPawn : public APawn
 {
     GENERATED_BODY()
 
@@ -73,7 +73,7 @@ public:
 protected:
     virtual void BeginPlay() override;
 
-private:
+protected:
     void UpdateVisualJoints();
     void ApplySandSuspension(float DeltaSeconds, bool bBrakeApplied);
 
