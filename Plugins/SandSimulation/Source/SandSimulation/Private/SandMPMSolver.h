@@ -56,13 +56,13 @@ public:
         SHADER_PARAMETER(FVector3f, MPMPhysicalDomainMinimumMeters)
         SHADER_PARAMETER(FVector3f, MPMPhysicalDomainMaximumMeters)
         SHADER_PARAMETER(uint32, MPMToolColliderCount)
-        SHADER_PARAMETER_ARRAY(FVector4f, MPMToolCentersMeters, [32])
-        SHADER_PARAMETER_ARRAY(FVector4f, MPMToolAxesX, [32])
-        SHADER_PARAMETER_ARRAY(FVector4f, MPMToolAxesY, [32])
-        SHADER_PARAMETER_ARRAY(FVector4f, MPMToolAxesZ, [32])
-        SHADER_PARAMETER_ARRAY(FVector4f, MPMToolHalfExtentsMeters, [32])
-        SHADER_PARAMETER_ARRAY(FVector4f, MPMToolLinearVelocitiesMetersPerSecond, [32])
-        SHADER_PARAMETER_ARRAY(FVector4f, MPMToolAngularVelocitiesRadiansPerSecond, [32])
+        SHADER_PARAMETER_ARRAY(FVector4f, MPMToolCentersMeters, [64])
+        SHADER_PARAMETER_ARRAY(FVector4f, MPMToolAxesX, [64])
+        SHADER_PARAMETER_ARRAY(FVector4f, MPMToolAxesY, [64])
+        SHADER_PARAMETER_ARRAY(FVector4f, MPMToolAxesZ, [64])
+        SHADER_PARAMETER_ARRAY(FVector4f, MPMToolHalfExtentsMeters, [64])
+        SHADER_PARAMETER_ARRAY(FVector4f, MPMToolLinearVelocitiesMetersPerSecond, [64])
+        SHADER_PARAMETER_ARRAY(FVector4f, MPMToolAngularVelocitiesRadiansPerSecond, [64])
         SHADER_PARAMETER_RDG_BUFFER_UAV(RWStructuredBuffer<uint32>, MPMGridScalars)
         SHADER_PARAMETER_RDG_BUFFER_UAV(RWStructuredBuffer<uint32>, MPMToolImpulseScalars)
     END_SHADER_PARAMETER_STRUCT()
@@ -85,19 +85,21 @@ public:
         SHADER_PARAMETER(float, MPMFrictionSlope)
         SHADER_PARAMETER(float, MPMCohesionInterceptPa)
         SHADER_PARAMETER(float, MPMHardeningRate)
+        SHADER_PARAMETER(uint32, MPMObjectiveMaterial)
+        SHADER_PARAMETER(float, MPMDilationSlope)
         SHADER_PARAMETER(float, MPMVelocityDampingPerSecond)
         SHADER_PARAMETER(float, MPMBoundaryFriction)
         SHADER_PARAMETER(FVector3f, MPMGridOriginMeters)
         SHADER_PARAMETER(FVector3f, MPMPhysicalDomainMinimumMeters)
         SHADER_PARAMETER(FVector3f, MPMPhysicalDomainMaximumMeters)
         SHADER_PARAMETER(uint32, MPMToolColliderCount)
-        SHADER_PARAMETER_ARRAY(FVector4f, MPMToolCentersMeters, [32])
-        SHADER_PARAMETER_ARRAY(FVector4f, MPMToolAxesX, [32])
-        SHADER_PARAMETER_ARRAY(FVector4f, MPMToolAxesY, [32])
-        SHADER_PARAMETER_ARRAY(FVector4f, MPMToolAxesZ, [32])
-        SHADER_PARAMETER_ARRAY(FVector4f, MPMToolHalfExtentsMeters, [32])
-        SHADER_PARAMETER_ARRAY(FVector4f, MPMToolLinearVelocitiesMetersPerSecond, [32])
-        SHADER_PARAMETER_ARRAY(FVector4f, MPMToolAngularVelocitiesRadiansPerSecond, [32])
+        SHADER_PARAMETER_ARRAY(FVector4f, MPMToolCentersMeters, [64])
+        SHADER_PARAMETER_ARRAY(FVector4f, MPMToolAxesX, [64])
+        SHADER_PARAMETER_ARRAY(FVector4f, MPMToolAxesY, [64])
+        SHADER_PARAMETER_ARRAY(FVector4f, MPMToolAxesZ, [64])
+        SHADER_PARAMETER_ARRAY(FVector4f, MPMToolHalfExtentsMeters, [64])
+        SHADER_PARAMETER_ARRAY(FVector4f, MPMToolLinearVelocitiesMetersPerSecond, [64])
+        SHADER_PARAMETER_ARRAY(FVector4f, MPMToolAngularVelocitiesRadiansPerSecond, [64])
         SHADER_PARAMETER(uint32, MPMBucketInteriorEnabled)
         SHADER_PARAMETER(float, MPMBucketInteriorDampingPerSecond)
         SHADER_PARAMETER(FVector3f, MPMBucketInteriorCenterMeters)
@@ -174,7 +176,7 @@ FToolOrientedBoxState SampleMachineCollider(const FToolOrientedBoxState& C, floa
 
 struct FToolColliderState
 {
-    static constexpr uint32 MaxColliderCount = 32;
+    static constexpr uint32 MaxColliderCount = 64;
     uint32 ColliderCount = 0;
     TStaticArray<FToolOrientedBoxState, MaxColliderCount> Colliders;
     bool bBucketInteriorEnabled = false;
@@ -191,8 +193,8 @@ struct FToolColliderState
 struct FToolInteractionResult
 {
     /** Momentum transferred from the tool to sand over this outer simulation step (kg*m/s). */
-    TStaticArray<FVector3f, 32> ColliderLinear{};
-    TStaticArray<FVector3f, 32> ColliderAngular{};
+    TStaticArray<FVector3f, 64> ColliderLinear{};
+    TStaticArray<FVector3f, 64> ColliderAngular{};
     FVector3f SandLinearImpulseKgMetersPerSecond = FVector3f::ZeroVector;
     /** Angular impulse about the tool center transferred from the tool to sand (kg*m^2/s). */
     FVector3f SandAngularImpulseKgMetersSquaredPerSecond = FVector3f::ZeroVector;

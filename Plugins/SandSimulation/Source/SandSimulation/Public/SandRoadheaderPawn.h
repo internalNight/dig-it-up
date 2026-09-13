@@ -22,10 +22,11 @@ public:
     float GetConveyorSpeed() const { return ChainSpeed; }
     float GetLoadTorque() const { return DrumLoad; }
     const FString& GetHeadType() const { return HeadType; }
+    float GetFeedFraction() const;
     bool IsConveyorRegion(const FVector3f& Position) const;
     bool IsDebugPoints() const { return bDebugPoints; }
     bool IsCutAcceptance() const { return bCutTest; }
-    float GetAcceptanceThrottle() const { return PhysicalTime>2 && PhysicalTime<7 ? 0.25f : 0.0f; }
+    float GetAcceptanceThrottle() const { return !bHoldTest && PhysicalTime>2 && PhysicalTime<7 ? 0.25f : 0.0f; }
     bool IsRunning() const { return bRunning; }
 protected:
     virtual void BeginPlay() override;
@@ -44,6 +45,12 @@ private:
     float HeadPitch = 0;
     // Geometric screening prototypes, not calibrated replicas of vendor machines.
     FString HeadType = TEXT("Paddle");
+    FString SoilCase;
+    float BladeAngle=60, BladeDepth=.10f, BladeSpeed=.05f;
+    float MeasuredDraftN=0;
+    double BladeWork=0, ForceIntegral=0, CuttingSeconds=0;
+    void CompleteSoilStep(const Sand::MPM::FToolInteractionResult& R,float Dt,const TArray<Sand::MPM::FParticleData>& Particles);
+    int32 HeadElementCount() const { return HeadType==TEXT("Helix")?24:HeadType==TEXT("BucketWheel")?16:8; }
     bool bPresetPitch = false;
     FVector InitialChassisLocation = FVector::ZeroVector;
     float Direction = 1;
@@ -55,6 +62,7 @@ private:
     bool bDebugPoints = false;
     bool bChainStopped = false;
     bool bCutTest = false;
+    bool bHoldTest = false;
     bool bRunning = false;
     bool bInternalCamera = false;
     bool bBench = false;

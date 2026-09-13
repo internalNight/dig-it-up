@@ -20,6 +20,9 @@ float MohrCoulombAngleToDruckerPragerAlpha(const float AngleDegrees)
 
 bool FSandMaterialParameters::IsValid(FString* OutReason) const
 {
+    for(float V : {BulkDensityKgPerM3,InternalFrictionAngleDegrees,CohesionPa,DilationAngleDegrees,
+        YoungsModulusPa,PoissonRatio,InitialRelativeCompaction,HardeningRate,ToolFrictionCoefficient,Restitution,VelocityDampingPerSecond})
+        if(!FMath::IsFinite(V)) return FailValidation(OutReason,TEXT("Material values must be finite."));
     if (BulkDensityKgPerM3 <= 0.0f)
     {
         return FailValidation(OutReason, TEXT("Bulk density must be positive."));

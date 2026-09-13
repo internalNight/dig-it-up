@@ -1,5 +1,16 @@
 # Dig It Up
 
+## Excavation research lab (2026-09-13)
+
+`PlayExcavationLab.cmd` opens the experimental dry-sand material, finite traction
+and load-limited feed mode. Use `Tools/PlayMachines.ps1 -Head Helix` to choose a
+prototype; available heads are Paddle, Chevron, BucketWheel, Spoke and Helix.
+The [Chinese research and implementation report](Docs/ExcavationLabV2.md) links
+market products, papers, material assumptions and [measured results](Docs/ExcavationLabResults.md).
+The lab includes a blade soil bin, grid/time-step sensitivity and no-throttle
+holding tests. It is not calibrated against physical sand. Full-sandbox continuous
+excavation and chassis/MPM momentum coupling remain open acceptance gates.
+
 ## Experimental physical roadheader (2026-09-10)
 
 Run `PlayMachines.cmd` to choose an excavator or a roadheader. The roadheader uses

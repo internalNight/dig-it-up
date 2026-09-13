@@ -1,0 +1,36 @@
+#ifndef SAND_MATERIAL_USH
+#define SAND_MATERIAL_USH
+// Corotated hypoelastic Drucker-Prager update, tension-positive Cauchy stress.
+// This is a rate-form model, not a critical-state or finite-strain soil model.
+float SandTrace(float3x3 A) { return A[0][0]+A[1][1]+A[2][2]; }
+float SandQ(float3x3 S) {
+    float3x3 D=S-SandTrace(S)/3.0f*float3x3(1,0,0,0,1,0,0,0,1);
+    return sqrt(1.5f*(dot(D[0],D[0])+dot(D[1],D[1])+dot(D[2],D[2])));
+}
+float3x3 SandObjectiveDP(float3x3 Old, float3x3 L, float Dt,
+    float G, float Lambda, float M, float C, float DilationSlope)
+{
+    const float3x3 I=float3x3(1,0,0,0,1,0,0,0,1);
+    const float3x3 W=.5f*(L-transpose(L))*Dt;
+    const float Angle=sqrt(max(0.0f,-.5f*SandTrace(mul(W,W))));
+    const float A=Angle<1.e-4f ? 1.0f-Angle*Angle/6.0f : sin(Angle)/Angle;
+    const float B=Angle<1.e-4f ? .5f-Angle*Angle/24.0f : (1.0f-cos(Angle))/(Angle*Angle);
+    const float3x3 R=I+A*W+B*mul(W,W);
+    const float3x3 E=.5f*Dt*(L+transpose(L));
+    const float3x3 Trial=mul(mul(R,Old),transpose(R))+2*G*E+Lambda*SandTrace(E)*I;
+    float P=max(0.0f,-SandTrace(Trial)/3.0f);
+    if(P<=0) return (float3x3)0;
+    float3x3 S=Trial+P*I;
+    const float Q=SandQ(S);
+    const float K=Lambda+2*G/3;
+    const float Yield=M*P+C;
+    if(Q>Yield && Q>1.e-7f) {
+        // g=q-Mpsi*p; positive plastic volume strain gives positive pressure
+        // correction under constrained dilation. Zero psi is isochoric flow.
+        const float DL=(Q-Yield)/(3*G+M*K*DilationSlope);
+        P+=K*DilationSlope*DL;
+        S*=max(0.0f,Q-3*G*DL)/Q;
+    }
+    return S-P*I;
+}
+#endif

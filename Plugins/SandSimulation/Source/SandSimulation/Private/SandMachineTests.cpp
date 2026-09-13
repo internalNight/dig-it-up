@@ -1,9 +1,32 @@
 #include "SandMachineKinematics.h"
 #include "SandMPMSolver.h"
 #include "SandMachineDrive.h"
+#include "SandTraction.h"
 #include "Misc/AutomationTest.h"
 
 #if WITH_DEV_AUTOMATION_TESTS
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSandTractionTest,"SandSimulation.Machine.FiniteTraction",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+bool FSandTractionTest::RunTest(const FString&)
+{
+    using namespace Sand::Machine;
+    TestTrue(TEXT("No airborne traction"),TractionForce(12,0,.6f,.1f,FVector2f::ZeroVector,120).IsNearlyZero());
+    for(float N : {10.f,100.f}) for(float Target : {-1.f,0.f,1.f}) {
+        const FVector2f V(.3f,.2f);
+        const auto F=TractionForce(12,N,.6f,Target,V,120);
+        TestTrue(TEXT("Longitudinal plus lateral share friction budget"),F.Size()<=.6f*N+.001f);
+        if(Target==0) TestTrue(TEXT("Brake cannot add kinetic energy"),FVector2f::DotProduct(F,V)<=0);
+    }
+    TestEqual(TEXT("Severe draft removes positive feed"),FeedFraction(80,0),0.f);
+    TestEqual(TEXT("No-load feed is available"),FeedFraction(0,0),1.f);
+    const float Dt=1.f/60;
+    const FVector2f Slow(.005f,.002f),Fast(2.f,0);
+    TestTrue(TEXT("Finite brake stops a supportable velocity within one step"),
+        (Slow+TractionForce(12,100,.6f,0,Slow,120,Dt)*Dt/12).Size()<.00001f);
+    TestTrue(TEXT("Brake cannot hold beyond available friction impulse"),
+        (Fast+TractionForce(12,10,.6f,0,Fast,120,Dt)*Dt/12).X>1.9f);
+    return true;
+}
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSandDriveLoadTest,"SandSimulation.Machine.DriveUnderLoad",
     EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 bool FSandDriveLoadTest::RunTest(const FString&)

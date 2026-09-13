@@ -1,5 +1,6 @@
 #include "/Engine/Public/Platform.ush"
 #include "/SandSimulation/Private/SandCommon.ush"
+#include "/SandSimulation/Private/SandMaterial.ush"
 
 struct FSandMPMParticle
 {
@@ -29,18 +30,20 @@ float MPMLameLambdaPa;
 float MPMFrictionSlope;
 float MPMCohesionInterceptPa;
 float MPMHardeningRate;
+uint MPMObjectiveMaterial;
+float MPMDilationSlope;
 float MPMVelocityDampingPerSecond;
 float3 MPMGridOriginMeters;
 float3 MPMPhysicalDomainMinimumMeters;
 float3 MPMPhysicalDomainMaximumMeters;
 uint MPMToolColliderCount;
-float4 MPMToolCentersMeters[32];
-float4 MPMToolAxesX[32];
-float4 MPMToolAxesY[32];
-float4 MPMToolAxesZ[32];
-float4 MPMToolHalfExtentsMeters[32];
-float4 MPMToolLinearVelocitiesMetersPerSecond[32];
-float4 MPMToolAngularVelocitiesRadiansPerSecond[32];
+float4 MPMToolCentersMeters[64];
+float4 MPMToolAxesX[64];
+float4 MPMToolAxesY[64];
+float4 MPMToolAxesZ[64];
+float4 MPMToolHalfExtentsMeters[64];
+float4 MPMToolLinearVelocitiesMetersPerSecond[64];
+float4 MPMToolAngularVelocitiesRadiansPerSecond[64];
 uint MPMBucketInteriorEnabled;
 float MPMBucketInteriorDampingPerSecond;
 float3 MPMBucketInteriorCenterMeters;
@@ -280,7 +283,7 @@ void MPMUpdateGridCS(uint3 DispatchThreadId : SV_DispatchThreadID)
     }
 
     [loop]
-    for (uint ToolIndex = 0u; ToolIndex < min(MPMToolColliderCount, 32u); ++ToolIndex)
+    for (uint ToolIndex = 0u; ToolIndex < min(MPMToolColliderCount, 64u); ++ToolIndex)
     {
         const float3 VelocityBeforeToolContact = Velocity;
         const float3 ToolCenter = MPMToolCentersMeters[ToolIndex].xyz;
@@ -465,6 +468,11 @@ void MPMG2PCS(uint3 DispatchThreadId : SV_DispatchThreadID)
         ProjectedStress[2][2] -= Pressure;
     }
 
+    if(MPMObjectiveMaterial!=0u)
+    {
+        ProjectedStress=SandObjectiveDP(MPMReadStress(Particle),VelocityGradient,MPMDeltaTimeSeconds,
+            MPMLameMuPa,MPMLameLambdaPa,MPMFrictionSlope,MPMCohesionInterceptPa,MPMDilationSlope);
+    }
     NewVelocity *= exp(-MPMVelocityDampingPerSecond * MPMDeltaTimeSeconds);
     // Guard the interactive runtime against a single ill-conditioned cell
     // injecting an unphysical ballistic particle. Four metres per second is
@@ -489,7 +497,7 @@ void MPMG2PCS(uint3 DispatchThreadId : SV_DispatchThreadID)
     // Grid contact transfers momentum efficiently, while this material-point pass
     // prevents individual samples from leaking through bucket plates after G2P interpolation.
     [loop]
-    for (uint ToolIndex = 0u; ToolIndex < min(MPMToolColliderCount, 32u); ++ToolIndex)
+    for (uint ToolIndex = 0u; ToolIndex < min(MPMToolColliderCount, 64u); ++ToolIndex)
     {
         const float3 ToolCenter = MPMToolCentersMeters[ToolIndex].xyz;
         const float3 ToolAxisX = MPMToolAxesX[ToolIndex].xyz;

@@ -1,0 +1,423 @@
+{
+  "runs": [
+    {
+      "suite": "Soil",
+      "case": "Idle25",
+      "flags": "-SandRoadheaderBench -SandMaterial=DryCorotated -SandSoilBench=Idle -SandQuality=Ultra",
+      "runUtc": "2026-09-13T06:39:43.1570172Z",
+      "config": [
+        "SOIL_CONFIG phiDeg=35.000 cohesionPa=0.000 toolMu=0.500 dampingPerSec=0.150 dilationActive=1 dilationDeg=0.000",
+        "MPM quality: cell 0.02500 m, dt 0.000833 s, particles 36864, grid 75 x 35 x 39",
+        "HEAD_CONFIG type=Paddle pitchDeg=0.00 mountHeightCm=4.00 fixedBench=1"
+      ],
+      "rawLog": "Saved\\ExcavationLab\\Soil\\Lab_Soil_Idle25.log",
+      "logSha256": "530a5c238c1b53f4e4bed19d3bac725b215a0f3d6fda432284fc0b522338a02b",
+      "csvSha256": "57966c44ed3f9385267c13a2fed94ca1ea5cdd527caf3698fd941c36775d4ca2"
+    },
+    {
+      "suite": "Soil",
+      "case": "Idle50",
+      "flags": "-SandRoadheaderBench -SandMaterial=DryCorotated -SandSoilBench=Idle -SandQuality=Balanced",
+      "runUtc": "2026-09-13T06:40:02.6947645Z",
+      "config": [
+        "SOIL_CONFIG phiDeg=35.000 cohesionPa=0.000 toolMu=0.500 dampingPerSec=0.150 dilationActive=1 dilationDeg=0.000",
+        "MPM quality: cell 0.05000 m, dt 0.001667 s, particles 4608, grid 39 x 19 x 21",
+        "HEAD_CONFIG type=Paddle pitchDeg=0.00 mountHeightCm=4.00 fixedBench=1"
+      ],
+      "rawLog": "Saved\\ExcavationLab\\Soil\\Lab_Soil_Idle50.log",
+      "logSha256": "2166fab0e665363e36e188d615e352f34493180f1b13f30d48eb4a81c8184b4e",
+      "csvSha256": "b7f96912ac6b9f4a91753dbdbf1fdad583e40d4595bd1abca8a7160246c8ab97"
+    },
+    {
+      "suite": "Soil",
+      "case": "Blade30",
+      "flags": "-SandRoadheaderBench -SandMaterial=DryCorotated -SandSoilBench=Blade -SandBladeAngle=30",
+      "runUtc": "2026-09-13T06:40:22.2337340Z",
+      "config": [
+        "SOIL_CONFIG phiDeg=35.000 cohesionPa=0.000 toolMu=0.500 dampingPerSec=0.150 dilationActive=1 dilationDeg=0.000",
+        "MPM quality: cell 0.02500 m, dt 0.000833 s, particles 36864, grid 75 x 35 x 39",
+        "HEAD_CONFIG type=Paddle pitchDeg=0.00 mountHeightCm=4.00 fixedBench=1"
+      ],
+      "rawLog": "Saved\\ExcavationLab\\Soil\\Lab_Soil_Blade30.log",
+      "logSha256": "656999bf495963d0f2334648eea18d7e5c10af9dae248fb84ddfc5aeca66d7e0",
+      "csvSha256": "cdac4517bb1856decff55bd90b3453e8c901c887d31d974c981e9a1cf1a22a4d"
+    },
+    {
+      "suite": "Soil",
+      "case": "Blade60",
+      "flags": "-SandRoadheaderBench -SandMaterial=DryCorotated -SandSoilBench=Blade -SandBladeAngle=60",
+      "runUtc": "2026-09-13T06:40:41.8016122Z",
+      "config": [
+        "SOIL_CONFIG phiDeg=35.000 cohesionPa=0.000 toolMu=0.500 dampingPerSec=0.150 dilationActive=1 dilationDeg=0.000",
+        "MPM quality: cell 0.02500 m, dt 0.000833 s, particles 36864, grid 75 x 35 x 39",
+        "HEAD_CONFIG type=Paddle pitchDeg=0.00 mountHeightCm=4.00 fixedBench=1"
+      ],
+      "rawLog": "Saved\\ExcavationLab\\Soil\\Lab_Soil_Blade60.log",
+      "logSha256": "87ca5fbee5a7d3a0d433d98e7bf36f5eafe85e2e931bfdffde0d67ee24ce87e8",
+      "csvSha256": "92a224061b7d8cdbb8d6353a58407cba680f5b1feaf58777e16881113d5e8e5e"
+    },
+    {
+      "suite": "Soil",
+      "case": "Blade90",
+      "flags": "-SandRoadheaderBench -SandMaterial=DryCorotated -SandSoilBench=Blade -SandBladeAngle=90",
+      "runUtc": "2026-09-13T06:41:01.4556839Z",
+      "config": [
+        "SOIL_CONFIG phiDeg=35.000 cohesionPa=0.000 toolMu=0.500 dampingPerSec=0.150 dilationActive=1 dilationDeg=0.000",
+        "MPM quality: cell 0.02500 m, dt 0.000833 s, particles 36864, grid 75 x 35 x 39",
+        "HEAD_CONFIG type=Paddle pitchDeg=0.00 mountHeightCm=4.00 fixedBench=1"
+      ],
+      "rawLog": "Saved\\ExcavationLab\\Soil\\Lab_Soil_Blade90.log",
+      "logSha256": "9619e39343c1707432f1f9da0eece9e8dfe59517a924df2d4277515614bcb39f",
+      "csvSha256": "039ca7471a23e24b88c0579b3fa19206cd31513713abc55b4cf4792c4df66563"
+    },
+    {
+      "suite": "Soil",
+      "case": "Blade60Fine",
+      "flags": "-SandRoadheaderBench -SandMaterial=DryCorotated -SandSoilBench=Blade -SandBladeAngle=60 -SandQuality=Fine",
+      "runUtc": "2026-09-13T06:41:22.9877375Z",
+      "config": [
+        "SOIL_CONFIG phiDeg=35.000 cohesionPa=0.000 toolMu=0.500 dampingPerSec=0.150 dilationActive=1 dilationDeg=0.000",
+        "MPM quality: cell 0.03125 m, dt 0.001111 s, particles 19604, grid 61 x 29 x 32",
+        "HEAD_CONFIG type=Paddle pitchDeg=0.00 mountHeightCm=4.00 fixedBench=1"
+      ],
+      "rawLog": "Saved\\ExcavationLab\\Soil\\Lab_Soil_Blade60Fine.log",
+      "logSha256": "44354845051bc4f718939f246a36bee4854f77b13395aa574c8dca8ad43d7555",
+      "csvSha256": "16623431b34f51f9f302752bf0c434b2007a492057ecd74e57421301e721ac90"
+    },
+    {
+      "suite": "Soil",
+      "case": "Blade60Dilation",
+      "flags": "-SandRoadheaderBench -SandMaterial=DryCorotated -SandSoilBench=Blade -SandBladeAngle=60 -SandDilation=5",
+      "runUtc": "2026-09-13T06:41:42.5526791Z",
+      "config": [
+        "SOIL_CONFIG phiDeg=35.000 cohesionPa=0.000 toolMu=0.500 dampingPerSec=0.150 dilationActive=1 dilationDeg=5.000",
+        "MPM quality: cell 0.02500 m, dt 0.000833 s, particles 36864, grid 75 x 35 x 39",
+        "HEAD_CONFIG type=Paddle pitchDeg=0.00 mountHeightCm=4.00 fixedBench=1"
+      ],
+      "rawLog": "Saved\\ExcavationLab\\Soil\\Lab_Soil_Blade60Dilation.log",
+      "logSha256": "aa80e752bcd2ac421670d659503b88aada82ff0776c18f8d9a47229d5398733b",
+      "csvSha256": "eb9c75a3b6d81185d1d9bc794e25702e21b1bcc45949a61c71243e24984fcc5b"
+    },
+    {
+      "suite": "Sensitivity",
+      "case": "Phi30",
+      "flags": "-SandRoadheaderBench -SandMaterial=DryCorotated -SandSoilBench=Blade -SandPhi=30",
+      "runUtc": "2026-09-13T06:42:02.4273977Z",
+      "config": [
+        "SOIL_CONFIG phiDeg=30.000 cohesionPa=0.000 toolMu=0.500 dampingPerSec=0.150 dilationActive=1 dilationDeg=0.000",
+        "MPM quality: cell 0.02500 m, dt 0.000833 s, particles 36864, grid 75 x 35 x 39",
+        "HEAD_CONFIG type=Paddle pitchDeg=0.00 mountHeightCm=4.00 fixedBench=1"
+      ],
+      "rawLog": "Saved\\ExcavationLab\\Sensitivity\\Lab_Sensitivity_Phi30.log",
+      "logSha256": "da8f3255da9d237fe8e814047b54f29afc3e43bc4af2bdfab3e52e06bcc9c348",
+      "csvSha256": "dc843f71768f1647b5e49f21d2dff06282a96c0f6240db922bf963ad8a84d5d7"
+    },
+    {
+      "suite": "Sensitivity",
+      "case": "Phi40",
+      "flags": "-SandRoadheaderBench -SandMaterial=DryCorotated -SandSoilBench=Blade -SandPhi=40",
+      "runUtc": "2026-09-13T06:42:22.9709081Z",
+      "config": [
+        "SOIL_CONFIG phiDeg=40.000 cohesionPa=0.000 toolMu=0.500 dampingPerSec=0.150 dilationActive=1 dilationDeg=0.000",
+        "MPM quality: cell 0.02500 m, dt 0.000833 s, particles 36864, grid 75 x 35 x 39",
+        "HEAD_CONFIG type=Paddle pitchDeg=0.00 mountHeightCm=4.00 fixedBench=1"
+      ],
+      "rawLog": "Saved\\ExcavationLab\\Sensitivity\\Lab_Sensitivity_Phi40.log",
+      "logSha256": "9a1bb3ae8d2b555f3bcf9c43831e73590847f142bc696d8e9f6b10fca84a9270",
+      "csvSha256": "5fa798b22120c4ad88b522ef4fcb086d712484612d17cfbcefa5a9665a1b521b"
+    },
+    {
+      "suite": "Sensitivity",
+      "case": "Depth05",
+      "flags": "-SandRoadheaderBench -SandMaterial=DryCorotated -SandSoilBench=Blade -SandBladeDepth=.05",
+      "runUtc": "2026-09-13T06:42:42.5195329Z",
+      "config": [
+        "SOIL_CONFIG phiDeg=35.000 cohesionPa=0.000 toolMu=0.500 dampingPerSec=0.150 dilationActive=1 dilationDeg=0.000",
+        "MPM quality: cell 0.02500 m, dt 0.000833 s, particles 36864, grid 75 x 35 x 39",
+        "HEAD_CONFIG type=Paddle pitchDeg=0.00 mountHeightCm=4.00 fixedBench=1"
+      ],
+      "rawLog": "Saved\\ExcavationLab\\Sensitivity\\Lab_Sensitivity_Depth05.log",
+      "logSha256": "2cc724e8e7ddc7dbe3509d37fe522d3e1b87c757e9e4e6b60d77a41e4fb84cae",
+      "csvSha256": "525ea74d5b90d5456dda2d8e720d9c7b0cd0a8bae57a45a65fb9aa45bc164ecb"
+    },
+    {
+      "suite": "Sensitivity",
+      "case": "Depth15",
+      "flags": "-SandRoadheaderBench -SandMaterial=DryCorotated -SandSoilBench=Blade -SandBladeDepth=.15",
+      "runUtc": "2026-09-13T06:43:02.1060363Z",
+      "config": [
+        "SOIL_CONFIG phiDeg=35.000 cohesionPa=0.000 toolMu=0.500 dampingPerSec=0.150 dilationActive=1 dilationDeg=0.000",
+        "MPM quality: cell 0.02500 m, dt 0.000833 s, particles 36864, grid 75 x 35 x 39",
+        "HEAD_CONFIG type=Paddle pitchDeg=0.00 mountHeightCm=4.00 fixedBench=1"
+      ],
+      "rawLog": "Saved\\ExcavationLab\\Sensitivity\\Lab_Sensitivity_Depth15.log",
+      "logSha256": "2515c1eb3be3544ea3867cbdd2ff21f4b2eb0e9616cbdb1f17adecd198927f7a",
+      "csvSha256": "9f9db875bf686be11d211b7db116980e97394d559e8c2644ceaef492f85dd514"
+    },
+    {
+      "suite": "Sensitivity",
+      "case": "TimeHalf",
+      "flags": "-SandRoadheaderBench -SandMaterial=DryCorotated -SandSoilBench=Blade -SandSubsteps=2",
+      "runUtc": "2026-09-13T06:43:22.7727570Z",
+      "config": [
+        "SOIL_CONFIG phiDeg=35.000 cohesionPa=0.000 toolMu=0.500 dampingPerSec=0.150 dilationActive=1 dilationDeg=0.000",
+        "MPM quality: cell 0.02500 m, dt 0.000417 s, particles 36864, grid 75 x 35 x 39",
+        "HEAD_CONFIG type=Paddle pitchDeg=0.00 mountHeightCm=4.00 fixedBench=1"
+      ],
+      "rawLog": "Saved\\ExcavationLab\\Sensitivity\\Lab_Sensitivity_TimeHalf.log",
+      "logSha256": "180a52fb9222d9f1b69ae6fd0d7179b5a7963b5ce41282fe6db27fec712f4ad2",
+      "csvSha256": "d89105a9fdab2b17318b45a3bbdae907ba590aa8486197645e5bfc6cbadd9495"
+    },
+    {
+      "suite": "Sensitivity",
+      "case": "Collapse",
+      "flags": "-SandRoadheaderBench -SandMaterial=DryCorotated -SandSoilBench=Collapse",
+      "runUtc": "2026-09-13T06:43:46.4178597Z",
+      "config": [
+        "SOIL_CONFIG phiDeg=35.000 cohesionPa=0.000 toolMu=0.500 dampingPerSec=0.150 dilationActive=1 dilationDeg=0.000",
+        "MPM quality: cell 0.02500 m, dt 0.000833 s, particles 7168, grid 75 x 35 x 39",
+        "HEAD_CONFIG type=Paddle pitchDeg=0.00 mountHeightCm=4.00 fixedBench=1"
+      ],
+      "rawLog": "Saved\\ExcavationLab\\Sensitivity\\Lab_Sensitivity_Collapse.log",
+      "logSha256": "5117e80409491236e09837a5ee8ef29d7289cc84e3f3a5e27736f8665b776345",
+      "csvSha256": "29f74a317278b5855744e02e644727df3aad35df9b77d7d5cf345daefff6264c"
+    },
+    {
+      "suite": "Heads",
+      "case": "Paddle",
+      "flags": "-SandHead=Paddle",
+      "runUtc": "see log",
+      "config": [
+        "SOIL_CONFIG phiDeg=35.000 cohesionPa=0.000 toolMu=0.500 dampingPerSec=0.150 dilationActive=1 dilationDeg=0.000",
+        "MPM quality: cell 0.02500 m, dt 0.000833 s, particles 3584, grid 99 x 51 x 47",
+        "HEAD_CONFIG type=Paddle pitchDeg=0.00 mountHeightCm=4.00 fixedBench=1"
+      ],
+      "rawLog": "Saved\\ExcavationLab\\Heads\\Lab_Heads_Paddle.log",
+      "logSha256": "c047922ee6cb30f768b1b1d8b45b36fe8e50dfe2587386170338e8d184e392bb",
+      "csvSha256": "7eb09b595526ef81b628a2a97522f1c83ea4d7b15e87ec1a884a229fae1d3c80"
+    },
+    {
+      "suite": "Heads",
+      "case": "Chevron",
+      "flags": "-SandHead=Chevron",
+      "runUtc": "see log",
+      "config": [
+        "SOIL_CONFIG phiDeg=35.000 cohesionPa=0.000 toolMu=0.500 dampingPerSec=0.150 dilationActive=1 dilationDeg=0.000",
+        "MPM quality: cell 0.02500 m, dt 0.000833 s, particles 3584, grid 99 x 51 x 47",
+        "HEAD_CONFIG type=Chevron pitchDeg=0.00 mountHeightCm=4.00 fixedBench=1"
+      ],
+      "rawLog": "Saved\\ExcavationLab\\Heads\\Lab_Heads_Chevron.log",
+      "logSha256": "470b2182991725b6fa6997740cfecf32e7f955381951afe9ce6dd722476a74d1",
+      "csvSha256": "2eb0abc405c0ce0b2c4dc8bf3c810cfa30867aaee4eb47b50bad48e10eb38334"
+    },
+    {
+      "suite": "Heads",
+      "case": "BucketWheel",
+      "flags": "-SandHead=BucketWheel",
+      "runUtc": "see log",
+      "config": [
+        "SOIL_CONFIG phiDeg=35.000 cohesionPa=0.000 toolMu=0.500 dampingPerSec=0.150 dilationActive=1 dilationDeg=0.000",
+        "MPM quality: cell 0.02500 m, dt 0.000833 s, particles 3584, grid 99 x 51 x 47",
+        "HEAD_CONFIG type=BucketWheel pitchDeg=0.00 mountHeightCm=4.00 fixedBench=1"
+      ],
+      "rawLog": "Saved\\ExcavationLab\\Heads\\Lab_Heads_BucketWheel.log",
+      "logSha256": "b07ac3c3215915f1bd33093335a4a941b77eb26f0c3489178c0bce82badb11cc",
+      "csvSha256": "98d2750fb5a143c7f865c64b3cda4ec50423a48f2639d1088e83c4584bedd2fe"
+    },
+    {
+      "suite": "Heads",
+      "case": "Spoke",
+      "flags": "-SandHead=Spoke",
+      "runUtc": "see log",
+      "config": [
+        "SOIL_CONFIG phiDeg=35.000 cohesionPa=0.000 toolMu=0.500 dampingPerSec=0.150 dilationActive=1 dilationDeg=0.000",
+        "MPM quality: cell 0.02500 m, dt 0.000833 s, particles 3584, grid 99 x 51 x 47",
+        "HEAD_CONFIG type=Spoke pitchDeg=0.00 mountHeightCm=4.00 fixedBench=1"
+      ],
+      "rawLog": "Saved\\ExcavationLab\\Heads\\Lab_Heads_Spoke.log",
+      "logSha256": "62994409a7ebbef7025cb9ce65fdf95ac551eb2b73950f2d1dddc39e0c66c00a",
+      "csvSha256": "be4ac655a9ed057c1f972abf177d26c909c6151e004ee5f42d169a3bceda1208"
+    },
+    {
+      "suite": "Heads",
+      "case": "Helix",
+      "flags": "-SandRoadheaderBench -SandMaterial=DryCorotated -SandHead=Helix",
+      "runUtc": "2026-09-13T06:35:32.4510059Z",
+      "config": [
+        "SOIL_CONFIG phiDeg=35.000 cohesionPa=0.000 toolMu=0.500 dampingPerSec=0.150 dilationActive=1 dilationDeg=0.000",
+        "MPM quality: cell 0.02500 m, dt 0.000833 s, particles 3584, grid 99 x 51 x 47",
+        "HEAD_CONFIG type=Helix pitchDeg=0.00 mountHeightCm=4.00 fixedBench=1"
+      ],
+      "rawLog": "Saved\\ExcavationLab\\Heads\\Lab_Heads_Helix.log",
+      "logSha256": "7096ed3b302413cca4c65d2f732f5cef99671b70e7fcb3f2760dd7f04679a141",
+      "csvSha256": "cfdcc380684bd7761617873627112423c7b267fe7783864baa5d937657df7fbc"
+    },
+    {
+      "suite": "Heads",
+      "case": "HelixStopped",
+      "flags": "-SandRoadheaderBench -SandMaterial=DryCorotated -SandHead=Helix -SandRoadheaderStopped",
+      "runUtc": "2026-09-13T06:36:09.5813178Z",
+      "config": [
+        "SOIL_CONFIG phiDeg=35.000 cohesionPa=0.000 toolMu=0.500 dampingPerSec=0.150 dilationActive=1 dilationDeg=0.000",
+        "MPM quality: cell 0.02500 m, dt 0.000833 s, particles 3584, grid 99 x 51 x 47",
+        "HEAD_CONFIG type=Helix pitchDeg=0.00 mountHeightCm=4.00 fixedBench=1"
+      ],
+      "rawLog": "Saved\\ExcavationLab\\Heads\\Lab_Heads_HelixStopped.log",
+      "logSha256": "3b173b051dfab7725c4d7b834ac4d36c2994ef87f20cb49d8802bb17cb3fe47c",
+      "csvSha256": "adde556936a0a1c1f7ff0576d6d2a7d8c51a62abb16416e98315a576541f895f"
+    },
+    {
+      "suite": "Heads",
+      "case": "SpokeStopped",
+      "flags": "-SandRoadheaderBench -SandMaterial=DryCorotated -SandHead=Spoke -SandRoadheaderStopped",
+      "runUtc": "2026-09-13T06:36:46.1851426Z",
+      "config": [
+        "SOIL_CONFIG phiDeg=35.000 cohesionPa=0.000 toolMu=0.500 dampingPerSec=0.150 dilationActive=1 dilationDeg=0.000",
+        "MPM quality: cell 0.02500 m, dt 0.000833 s, particles 3584, grid 99 x 51 x 47",
+        "HEAD_CONFIG type=Spoke pitchDeg=0.00 mountHeightCm=4.00 fixedBench=1"
+      ],
+      "rawLog": "Saved\\ExcavationLab\\Heads\\Lab_Heads_SpokeStopped.log",
+      "logSha256": "ed2f9e9a9d484f272cbfcbb94329433c64d035d49a44c065141a63d2112e1992",
+      "csvSha256": "0dd604f0b58d8493dfa9eaa67880a1ca70af42f9303bebe9a26d08364ae61f55"
+    },
+    {
+      "suite": "Drive",
+      "case": "Legacy",
+      "flags": " -SandHead=Paddle -SandRoadheader -SandCutTest",
+      "runUtc": "2026-09-13T06:48:35.7812312Z",
+      "config": [
+        "SOIL_CONFIG phiDeg=40.000 cohesionPa=250.000 toolMu=0.500 dampingPerSec=0.650 dilationActive=0 dilationDeg=5.000",
+        "MPM quality: cell 0.05000 m, dt 0.001667 s, particles 300000, grid 103 x 103 x 53",
+        "HEAD_CONFIG type=Paddle pitchDeg=0.00 mountHeightCm=16.00 fixedBench=0"
+      ],
+      "rawLog": "Saved\\ExcavationLab\\Drive\\Lab_Drive_Legacy.log",
+      "logSha256": "86baaa8cdeb09b032074c0a1e013c38f90e458a629bff9faad923824519932af",
+      "csvSha256": "ef2dabb8cfe34daaa30e2ee6cf0f0555603e6cabbbe8a3cbcb3c5c72572ea52e"
+    },
+    {
+      "suite": "Drive",
+      "case": "Limited",
+      "flags": " -SandHead=Paddle -SandRoadheader -SandCutTest -SandTraction",
+      "runUtc": "2026-09-13T06:49:24.3303594Z",
+      "config": [
+        "SOIL_CONFIG phiDeg=40.000 cohesionPa=250.000 toolMu=0.500 dampingPerSec=0.650 dilationActive=0 dilationDeg=5.000",
+        "MPM quality: cell 0.05000 m, dt 0.001667 s, particles 300000, grid 103 x 103 x 53",
+        "HEAD_CONFIG type=Paddle pitchDeg=0.00 mountHeightCm=16.00 fixedBench=0"
+      ],
+      "rawLog": "Saved\\ExcavationLab\\Drive\\Lab_Drive_Limited.log",
+      "logSha256": "9fe87dac1f2cf245e32f8408633b2a876e0e8f6d70501b1f37b5dc54bb0c6f9e",
+      "csvSha256": "387387b823af825508cf57a142e21387042587ad713ba62f92613f8ece5fd570"
+    },
+    {
+      "suite": "Drive",
+      "case": "Controlled",
+      "flags": " -SandHead=Paddle -SandRoadheader -SandCutTest -SandTraction -SandFeedControl",
+      "runUtc": "2026-09-13T06:50:09.9309782Z",
+      "config": [
+        "SOIL_CONFIG phiDeg=40.000 cohesionPa=250.000 toolMu=0.500 dampingPerSec=0.650 dilationActive=0 dilationDeg=5.000",
+        "MPM quality: cell 0.05000 m, dt 0.001667 s, particles 300000, grid 103 x 103 x 53",
+        "HEAD_CONFIG type=Paddle pitchDeg=0.00 mountHeightCm=16.00 fixedBench=0"
+      ],
+      "rawLog": "Saved\\ExcavationLab\\Drive\\Lab_Drive_Controlled.log",
+      "logSha256": "970a5ece41cab457736d5cf0771208f20d1f6b358dd0ce14f3cf41d5f5b4d90a",
+      "csvSha256": "a22129e44d222a6c1abc828d7df55999afb8f162f06fe5f9ea8d64310540bcdd"
+    },
+    {
+      "suite": "Drive",
+      "case": "ControlledDry",
+      "flags": " -SandHead=Paddle -SandRoadheader -SandCutTest -SandTraction -SandFeedControl -SandMaterial=DryCorotated",
+      "runUtc": "2026-09-13T06:50:55.5173874Z",
+      "config": [
+        "SOIL_CONFIG phiDeg=35.000 cohesionPa=0.000 toolMu=0.500 dampingPerSec=0.150 dilationActive=1 dilationDeg=0.000",
+        "MPM quality: cell 0.05000 m, dt 0.001667 s, particles 300000, grid 103 x 103 x 53",
+        "HEAD_CONFIG type=Paddle pitchDeg=0.00 mountHeightCm=16.00 fixedBench=0"
+      ],
+      "rawLog": "Saved\\ExcavationLab\\Drive\\Lab_Drive_ControlledDry.log",
+      "logSha256": "2dc994708127e5ce1ab47695a46d3e165621f33727417ad33e1f2a85f2389815",
+      "csvSha256": "890347d3b9d37949a26f25809fdf758b7e8c43bac841a4182ac722cae4e27016"
+    },
+    {
+      "suite": "Holding",
+      "case": "HoldLegacy",
+      "flags": " -SandHead=Paddle -SandRoadheader -SandHoldTest -SandHeadPitch=-8",
+      "runUtc": "2026-09-13T06:46:17.9180325Z",
+      "config": [
+        "SOIL_CONFIG phiDeg=40.000 cohesionPa=250.000 toolMu=0.500 dampingPerSec=0.650 dilationActive=0 dilationDeg=5.000",
+        "MPM quality: cell 0.05000 m, dt 0.001667 s, particles 300000, grid 103 x 103 x 53",
+        "HEAD_CONFIG type=Paddle pitchDeg=-8.00 mountHeightCm=16.00 fixedBench=0"
+      ],
+      "rawLog": "Saved\\ExcavationLab\\Holding\\Lab_Holding_HoldLegacy.log",
+      "logSha256": "afd532a84d92b90615156caf8a3a99f9f7fefecc3e0066d106f7224f9cde54fd",
+      "csvSha256": "b5129792d5609f3643bd57e08038a5bc6e5df8f6832439c5a4d79f2772f5e993"
+    },
+    {
+      "suite": "Holding",
+      "case": "HoldLimited",
+      "flags": " -SandHead=Paddle -SandRoadheader -SandHoldTest -SandHeadPitch=-8 -SandTraction",
+      "runUtc": "2026-09-13T06:47:04.5872688Z",
+      "config": [
+        "SOIL_CONFIG phiDeg=40.000 cohesionPa=250.000 toolMu=0.500 dampingPerSec=0.650 dilationActive=0 dilationDeg=5.000",
+        "MPM quality: cell 0.05000 m, dt 0.001667 s, particles 300000, grid 103 x 103 x 53",
+        "HEAD_CONFIG type=Paddle pitchDeg=-8.00 mountHeightCm=16.00 fixedBench=0"
+      ],
+      "rawLog": "Saved\\ExcavationLab\\Holding\\Lab_Holding_HoldLimited.log",
+      "logSha256": "5858307b6a846b53969fee6d12ec39b90857e87b97cb650ef4ddbcad55a8fc33",
+      "csvSha256": "2d05089b5f9be378cda15ec420ba063f0a0bbb3b71100ccec7f659ce804da20a"
+    },
+    {
+      "suite": "Holding",
+      "case": "HoldStopped",
+      "flags": " -SandHead=Paddle -SandRoadheader -SandHoldTest -SandHeadPitch=-8 -SandTraction -SandRoadheaderStopped",
+      "runUtc": "2026-09-13T06:47:50.2295533Z",
+      "config": [
+        "SOIL_CONFIG phiDeg=40.000 cohesionPa=250.000 toolMu=0.500 dampingPerSec=0.650 dilationActive=0 dilationDeg=5.000",
+        "MPM quality: cell 0.05000 m, dt 0.001667 s, particles 300000, grid 103 x 103 x 53",
+        "HEAD_CONFIG type=Paddle pitchDeg=-8.00 mountHeightCm=16.00 fixedBench=0"
+      ],
+      "rawLog": "Saved\\ExcavationLab\\Holding\\Lab_Holding_HoldStopped.log",
+      "logSha256": "db3fc04d8e4cd4cba12c2159d46eaa121f34a42368c39d348e425de4ea366ead",
+      "csvSha256": "ca97eeaac09c95e40bd8ef218b81a9deeb53ada3726be055f950ed18c3ecef8c"
+    }
+  ],
+  "finalSourceHashes": {
+    "Plugins\\SandSimulation\\Source\\SandSimulation\\Private\\SandCollapseSurfacePreviewActor.cpp": "c3ea7cfe5076653583a50ddd45b7524ca9b4dba212e658619f32478174ff8c62",
+    "Plugins\\SandSimulation\\Source\\SandSimulation\\Private\\SandColumnCollapse.cpp": "8037caa753ac8685ca745a012b7f633978e57d2c7ec9b3b642944f066410c641",
+    "Plugins\\SandSimulation\\Source\\SandSimulation\\Private\\SandComputeValidation.cpp": "1b7d4c7ae258592bf61aeabc25a9c3f1d2eb8cc93a9c11d9ab874221c1de0ea5",
+    "Plugins\\SandSimulation\\Source\\SandSimulation\\Private\\SandExcavatorPawn.cpp": "d6b95bdd011d2633b2d7232f76cc6aef544316c2510d7ed71fc843dfe679513d",
+    "Plugins\\SandSimulation\\Source\\SandSimulation\\Private\\SandGridTransfer.cpp": "b63f1024bfb30648b3d3961f0a041fc6b58db581f93fb862571d0fed84a167c4",
+    "Plugins\\SandSimulation\\Source\\SandSimulation\\Private\\SandHUD.cpp": "13c4beeeec8fd866da857e5b18b8cd713a9c51c1a4b7a98479bb0c1d089b17d7",
+    "Plugins\\SandSimulation\\Source\\SandSimulation\\Private\\SandMachineTests.cpp": "0f16cb714f687991c9ca8d25b0c6410bc2fa65423aa984596973681b60351116",
+    "Plugins\\SandSimulation\\Source\\SandSimulation\\Private\\SandMPMSolver.cpp": "9001a0b1f135d7196463c51b90a3fb2d377991f2e9fb3e5b238303b25a7b826a",
+    "Plugins\\SandSimulation\\Source\\SandSimulation\\Private\\SandParticleInitialization.cpp": "f8f59fea9366039762b4ab3080881183e98138ff54fd478523244223ee23b81c",
+    "Plugins\\SandSimulation\\Source\\SandSimulation\\Private\\SandPreviewGameMode.cpp": "059182d6aa719d0ec4edaff579de73fa101816e72ac0ca649b9b905f5f2b3668",
+    "Plugins\\SandSimulation\\Source\\SandSimulation\\Private\\SandRoadheaderPawn.cpp": "f68d31f58f7629f4ef54db6642754abbfa31b79c2e0307b815e119d01fa109cb",
+    "Plugins\\SandSimulation\\Source\\SandSimulation\\Private\\SandSimulationComponent.cpp": "eaa17c6a4f76576bf8e683fd5b19fe323438a5ff36757140bf8264a3462acc6c",
+    "Plugins\\SandSimulation\\Source\\SandSimulation\\Private\\SandSimulationModule.cpp": "896c504a33e405698e209242796b6d5abdfab8634b6fb76cee3e90405410f4c3",
+    "Plugins\\SandSimulation\\Source\\SandSimulation\\Private\\SandSimulationTypes.cpp": "6108096b61842671b1189d2035e92c496152f9ed3eec531d8fa165a7c4576c69",
+    "Plugins\\SandSimulation\\Source\\SandSimulation\\Private\\SandSimulationVolume.cpp": "4897502b74a5295f8855e3ba79e745de879ee10f90244ede3a24af79109cb73b",
+    "Plugins\\SandSimulation\\Source\\SandSimulation\\Private\\SandSurfacePreviewActor.cpp": "481f7ef840e7ed58fe160fe27516a284b89f60b1ae134fd68d3b029ab9f99ca4",
+    "Plugins\\SandSimulation\\Source\\SandSimulation\\Private\\SandFloorExposure.h": "5626fa5a581193443a8af34e169376505a35df8b95ee8bff862d49bfe90e06d0",
+    "Plugins\\SandSimulation\\Source\\SandSimulation\\Private\\SandMachineDrive.h": "7678c95f1ce43acc964ab8ef69c824a3de0580e6ce4b131205ab93ea25ec581b",
+    "Plugins\\SandSimulation\\Source\\SandSimulation\\Private\\SandMachineKinematics.h": "5f0febf10f37d035cbc85c140b111545430d7555f0c3eb23e1cfecc0249d7c6e",
+    "Plugins\\SandSimulation\\Source\\SandSimulation\\Private\\SandMPMSolver.h": "461f69d3e0a9008afb48aed17cc1fe11d94f0097430684d4276f18a00fbe3f00",
+    "Plugins\\SandSimulation\\Source\\SandSimulation\\Private\\SandTraction.h": "a5cde714f08b7b8a3f709a26b797e8c43f94ab38e49714673c752c20c7ee620c",
+    "Plugins\\SandSimulation\\Source\\SandSimulation\\Public\\SandCollapseSurfacePreviewActor.h": "5fc87488d7c4f466f74c3d06eb05347fc7858eff59a1bd941b397d772e7bafd3",
+    "Plugins\\SandSimulation\\Source\\SandSimulation\\Public\\SandExcavatorPawn.h": "70689a950297e66e1b089633908933702fb2d4e33847d04558e5d53e90e21ef9",
+    "Plugins\\SandSimulation\\Source\\SandSimulation\\Public\\SandHUD.h": "91bfca09692ba958b96579b3453c6a1dec85fdca46ad7909327a3ab10b516c20",
+    "Plugins\\SandSimulation\\Source\\SandSimulation\\Public\\SandLevelSettings.h": "1bcb001e2ab22f936eb96e4328242aace7da984f692d8e65927a19cd5aeeb01f",
+    "Plugins\\SandSimulation\\Source\\SandSimulation\\Public\\SandPreviewGameMode.h": "932f8ad1bf65ac0427419e71a0e8f26a088480286cc7bf5233a8e4549555199d",
+    "Plugins\\SandSimulation\\Source\\SandSimulation\\Public\\SandRoadheaderPawn.h": "ba4396902446af6aa05e9c8fefa7a096ac1410b9f82f6cfa224668e297821ded",
+    "Plugins\\SandSimulation\\Source\\SandSimulation\\Public\\SandSimulationComponent.h": "0463767b7456cfee1bc2d809cee9e9c17d2e89d6dfc04b42c8d74d306b296bde",
+    "Plugins\\SandSimulation\\Source\\SandSimulation\\Public\\SandSimulationModule.h": "fc1ec81b8ff71bb43dca7407d7478b01fc0ae8f61c1eb9a456080c3725f8e0e4",
+    "Plugins\\SandSimulation\\Source\\SandSimulation\\Public\\SandSimulationTypes.h": "170e3974f15f566fa3724c5fae7e5d21a6e33b40ee0ca6dc0d24f1d0f37f9767",
+    "Plugins\\SandSimulation\\Source\\SandSimulation\\Public\\SandSimulationVolume.h": "d4bb343eea919d4d5daade996325ab8c4d26039ec75c62b1051845a4e5e15cc0",
+    "Plugins\\SandSimulation\\Source\\SandSimulation\\Public\\SandSurfacePreviewActor.h": "c16885b3a959c15e7c3bb8bc6b105cb80a11b74f5df60d2b38b321a1741e3090",
+    "Plugins\\SandSimulation\\Shaders\\Private\\SandDensityField.usf": "ac133bb6d040a31e5b2c694b6c2c6aada897149ba6cf8828443707aab0ef86da",
+    "Plugins\\SandSimulation\\Shaders\\Private\\SandElastoplasticMPM.usf": "46ba5c8cdff245c2eb4b65542c951b4a37147b2c25d7848a9df2cf2503c0fa7f",
+    "Plugins\\SandSimulation\\Shaders\\Private\\SandGridTransfer.usf": "4499c08f378dd65f0f9f6508ea9a9c2b86eca2dbc2e7e2d031b1a9206485b32c",
+    "Plugins\\SandSimulation\\Shaders\\Private\\SandParticleInitialization.usf": "1954ec978c2bed1d951e2f0ab3b482f08730720b1a6acc75a3592ba9349ac35c",
+    "Plugins\\SandSimulation\\Shaders\\Private\\SandValidation.usf": "84eb7043f6c62209e9f3354d199ba8a2fab37e64cffe9b7cf2ac28ab35a49f3a",
+    "Plugins\\SandSimulation\\Shaders\\Private\\SandCommon.ush": "6de2f0171233d9abcefed643038c36be98ed8a96ce6b950cd18e01b14f8f7b63",
+    "Plugins\\SandSimulation\\Shaders\\Private\\SandMaterial.ush": "fa6986fbd4c942431a5fc39705ee1fcba21eb57e54b75cff7c5e5571179c58e7"
+  }
+}

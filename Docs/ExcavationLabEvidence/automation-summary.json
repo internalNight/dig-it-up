@@ -1,0 +1,66 @@
+{
+  "reportCreatedOn": "2026.09.13-06.46.17",
+  "succeeded": 14,
+  "succeededWithWarnings": 0,
+  "failed": 0,
+  "notRun": 0,
+  "inProcess": 0,
+  "tests": [
+    {
+      "fullTestPath": "SandSimulation.Contact.VisibleSurfaceSupport",
+      "state": "Success"
+    },
+    {
+      "fullTestPath": "SandSimulation.Goal.FloorExposure",
+      "state": "Success"
+    },
+    {
+      "fullTestPath": "SandSimulation.GPU.ColumnCollapse",
+      "state": "Success"
+    },
+    {
+      "fullTestPath": "SandSimulation.GPU.GridTransfer",
+      "state": "Success"
+    },
+    {
+      "fullTestPath": "SandSimulation.GPU.ParticleInitialization",
+      "state": "Success"
+    },
+    {
+      "fullTestPath": "SandSimulation.GPU.SurfaceReconstruction",
+      "state": "Success"
+    },
+    {
+      "fullTestPath": "SandSimulation.GPU.Validation",
+      "state": "Success"
+    },
+    {
+      "fullTestPath": "SandSimulation.Machine.ArbitraryRotorVelocity",
+      "state": "Success"
+    },
+    {
+      "fullTestPath": "SandSimulation.Machine.ClosedChain",
+      "state": "Success"
+    },
+    {
+      "fullTestPath": "SandSimulation.Machine.DriveUnderLoad",
+      "state": "Success"
+    },
+    {
+      "fullTestPath": "SandSimulation.Machine.FiniteTraction",
+      "state": "Success"
+    },
+    {
+      "fullTestPath": "SandSimulation.Machine.RotorContactVelocity",
+      "state": "Success"
+    },
+    {
+      "fullTestPath": "SandSimulation.Parameters.Defaults",
+      "state": "Success"
+    },
+    {
+      "fullTestPath": "SandSimulation.Runtime.FullSandboxInitialization",
+      "state": "Success"
+    }
+  ]
+}

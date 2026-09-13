@@ -30,6 +30,9 @@ struct SANDSIMULATION_API FSandMaterialParameters
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Sand|Material", meta = (ClampMin = "0.0", ClampMax = "30.0", Units = "deg"))
     float DilationAngleDegrees = 5.0f;
 
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Sand|Material")
+    bool bObjectiveMaterial = false;
+
     /** Effective continuum stiffness. Higher values reduce elastic give but require smaller substeps. */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Sand|Material", meta = (ClampMin = "10000.0", ClampMax = "5000000.0"))
     float YoungsModulusPa = 250000.0f;

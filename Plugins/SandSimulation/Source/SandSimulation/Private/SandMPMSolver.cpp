@@ -161,7 +161,7 @@ void EnqueueValidatedColumnCollapse(
                 FRDGBufferDesc::CreateStructuredDesc(sizeof(uint32), GridScalarCount),
                 TEXT("Sand.RuntimeCollapse.Grid"));
             FRDGBufferRef DisabledToolImpulseBuffer = GraphBuilder.CreateBuffer(
-                FRDGBufferDesc::CreateStructuredDesc(sizeof(uint32), 6 + 32*6),
+                FRDGBufferDesc::CreateStructuredDesc(sizeof(uint32), 6 + 64*6),
                 TEXT("Sand.RuntimeCollapse.DisabledToolImpulse"));
             AddClearUAVPass(GraphBuilder, GraphBuilder.CreateUAV(DisabledToolImpulseBuffer), 0u);
             FRDGBufferRef CurrentParticles = ParticleA;
@@ -224,6 +224,9 @@ void EnqueueValidatedColumnCollapse(
                 G2P->MPMFrictionSlope = 6.0f * SinPhi / (3.0f - SinPhi);
                 G2P->MPMCohesionInterceptPa = Material.GetDruckerPragerCohesionInterceptPa();
                 G2P->MPMHardeningRate = Material.HardeningRate;
+                G2P->MPMObjectiveMaterial = Material.bObjectiveMaterial;
+                const float SinPsi=FMath::Sin(FMath::DegreesToRadians(Material.DilationAngleDegrees));
+                G2P->MPMDilationSlope=6*SinPsi/(3-SinPsi);
                 G2P->MPMVelocityDampingPerSecond = Material.VelocityDampingPerSecond;
                 G2P->MPMBoundaryFriction = Material.ToolFrictionCoefficient;
                 G2P->MPMGridOriginMeters = GridOrigin;
@@ -306,6 +309,8 @@ TSharedRef<FRuntimeSimulationState, ESPMode::ThreadSafe> CreateRuntimeSandboxSim
     const bool bBench = FParse::Param(FCommandLine::Get(), TEXT("SandRoadheaderBench"));
     if (bBench && Quality.IsEmpty()) State->CellSize = 0.025f;
     State->InternalDeltaSeconds = 1.0f / (State->CellSize <= 0.025f ? 1200.0f : State->CellSize <= 0.03125f ? 900.0f : State->CellSize <= 0.05f ? 600.0f : 300.0f);
+    int32 SubstepScale=1; FParse::Value(FCommandLine::Get(),TEXT("SandSubsteps="),SubstepScale);
+    State->InternalDeltaSeconds/=FMath::Clamp(SubstepScale,1,4);
     State->PhysicalMinimum = FVector3f(-2.5f, -2.5f, 0.0f);
     const float Depth = GetDefault<USandLevelSettings>()->SandDepthMeters;
     State->PhysicalMaximum = FVector3f(2.5f, 2.5f, Depth + 1.0f);
@@ -334,6 +339,31 @@ TSharedRef<FRuntimeSimulationState, ESPMode::ThreadSafe> CreateRuntimeSandboxSim
             P.PositionAndMass=FVector4f(X,Y,Z,Material.BulkDensityKgPerM3*H*H*H);
             P.VelocityAndVolume=FVector4f(0,0,0,H*H*H);
             P.StressRow0AndCompaction.W=0.45f;
+            State->InitialParticles.Add(P);
+        }
+    }
+    FString SoilCase;
+    if(FParse::Value(FCommandLine::Get(),TEXT("SandSoilBench="),SoilCase)) {
+        State->PhysicalMinimum=FVector3f(-.4f,-.4f,0);
+        State->PhysicalMaximum=FVector3f(1.4f,.4f,.9f);
+        State->GridOrigin=State->PhysicalMinimum-FVector3f(State->CellSize);
+        const FVector3f N=(State->PhysicalMaximum-State->PhysicalMinimum)/State->CellSize;
+        State->GridSize=FIntVector(FMath::CeilToInt(N.X)+3,FMath::CeilToInt(N.Y)+3,FMath::CeilToInt(N.Z)+3);
+        State->InitialParticles.Reset();
+        const float H=State->CellSize;
+        const bool Collapse=SoilCase==TEXT("Collapse");
+        const float XMin=Collapse?.2f:-.4f, XMax=Collapse?.9f:1.4f;
+        const float YMin=Collapse?-.2f:-.4f, YMax=Collapse?.2f:.4f;
+        for(float Z0=0;Z0<.4f-1.e-5f;Z0+=H) for(float Y0=YMin;Y0<YMax-1.e-5f;Y0+=H) for(float X0=XMin;X0<XMax-1.e-5f;X0+=H) {
+            const float DX=FMath::Min(H,XMax-X0),DY=FMath::Min(H,YMax-Y0),DZ=FMath::Min(H,.4f-Z0);
+            const float X=X0+DX/2,Y=Y0+DY/2,Z=Z0+DZ/2,Volume=DX*DY*DZ;
+            FParticleData P; FMemory::Memzero(P);
+            P.PositionAndMass=FVector4f(X,Y,Z,Material.BulkDensityKgPerM3*Volume);
+            P.VelocityAndVolume=FVector4f(0,0,0,Volume);
+            const float S=-Material.BulkDensityKgPerM3*9.81f*(.4f-Z);
+            const float K=1-FMath::Sin(FMath::DegreesToRadians(Material.InternalFrictionAngleDegrees));
+            P.StressRow0AndCompaction=FVector4f(K*S,0,0,Material.InitialRelativeCompaction);
+            P.StressRemainder=FVector4f(K*S,0,S,0);
             State->InitialParticles.Add(P);
         }
     }
@@ -416,7 +446,7 @@ void EnqueueRuntimeSimulationSteps(
                 FRDGBufferDesc::CreateStructuredDesc(sizeof(uint32), 4 * GridNodeCount),
                 TEXT("Sand.Runtime.Grid"));
             FRDGBufferRef ToolImpulseBuffer = GraphBuilder.CreateBuffer(
-                FRDGBufferDesc::CreateStructuredDesc(sizeof(uint32), 6 + 32*6),
+                FRDGBufferDesc::CreateStructuredDesc(sizeof(uint32), 6 + 64*6),
                 TEXT("Sand.Runtime.ToolImpulse"));
             AddClearUAVPass(GraphBuilder, GraphBuilder.CreateUAV(ToolImpulseBuffer), 0u);
 
@@ -493,6 +523,9 @@ void EnqueueRuntimeSimulationSteps(
                 G2P->MPMFrictionSlope = 6.0f * SinPhi / (3.0f - SinPhi);
                 G2P->MPMCohesionInterceptPa = State->Material.GetDruckerPragerCohesionInterceptPa();
                 G2P->MPMHardeningRate = State->Material.HardeningRate;
+                G2P->MPMObjectiveMaterial=State->Material.bObjectiveMaterial;
+                const float SinPsi=FMath::Sin(FMath::DegreesToRadians(State->Material.DilationAngleDegrees));
+                G2P->MPMDilationSlope=6*SinPsi/(3-SinPsi);
                 G2P->MPMVelocityDampingPerSecond = State->Material.VelocityDampingPerSecond;
                 G2P->MPMBoundaryFriction = State->Material.ToolFrictionCoefficient;
                 G2P->MPMGridOriginMeters = State->GridOrigin;
@@ -563,7 +596,7 @@ void EnqueueRuntimeSimulationSteps(
                         FRHICommandListImmediate& ReadbackCommandList)
                     {
                         const uint32 ParticleBytes = ReadbackParticles->Num() * sizeof(FParticleData);
-                        constexpr uint32 ToolBytes = (6 + 32*6) * sizeof(float);
+                        constexpr uint32 ToolBytes = (6 + 64*6) * sizeof(float);
                         FRHIGPUBufferReadback ParticleReadback(TEXT("Sand.PersistentMPM.ParticleReadback"));
                         FRHIGPUBufferReadback ToolReadback(TEXT("Sand.PersistentMPM.ToolReadback"));
                         if (bReadbackParticles)
@@ -594,7 +627,7 @@ void EnqueueRuntimeSimulationSteps(
                             ToolValues[0], ToolValues[1], ToolValues[2]);
                         ToolInteraction->SandAngularImpulseKgMetersSquaredPerSecond = FVector3f(
                             ToolValues[3], ToolValues[4], ToolValues[5]);
-                        for (uint32 I=0; I<32; ++I)
+                        for (uint32 I=0; I<64; ++I)
                         {
                             const float* V = ToolValues + 6 + 6*I;
                             ToolInteraction->ColliderLinear[I] = FVector3f(V[0],V[1],V[2]);

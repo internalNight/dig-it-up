@@ -157,7 +157,7 @@ bool FSandColumnCollapseTest::RunTest(const FString& Parameters)
                 FRDGBufferDesc::CreateStructuredDesc(sizeof(uint32), GridScalarCount),
                 TEXT("Sand.Collapse.Grid"));
             FRDGBufferRef DisabledToolImpulseBuffer = GraphBuilder.CreateBuffer(
-                FRDGBufferDesc::CreateStructuredDesc(sizeof(uint32), 6+32*6),
+                FRDGBufferDesc::CreateStructuredDesc(sizeof(uint32), 6+64*6),
                 TEXT("Sand.Collapse.DisabledToolImpulse"));
             AddClearUAVPass(GraphBuilder, GraphBuilder.CreateUAV(DisabledToolImpulseBuffer), 0u);
             FRDGBufferRef CurrentParticles = ParticleA;
@@ -219,6 +219,9 @@ bool FSandColumnCollapseTest::RunTest(const FString& Parameters)
                     (3.0f - FMath::Sin(FMath::DegreesToRadians(Material.InternalFrictionAngleDegrees)));
                 G2P->MPMCohesionInterceptPa = Material.GetDruckerPragerCohesionInterceptPa();
                 G2P->MPMHardeningRate = Material.HardeningRate;
+                G2P->MPMObjectiveMaterial=Material.bObjectiveMaterial;
+                const float SinPsi=FMath::Sin(FMath::DegreesToRadians(Material.DilationAngleDegrees));
+                G2P->MPMDilationSlope=6*SinPsi/(3-SinPsi);
                 G2P->MPMVelocityDampingPerSecond = Material.VelocityDampingPerSecond;
                 G2P->MPMBoundaryFriction = Material.ToolFrictionCoefficient;
                 G2P->MPMGridOriginMeters = GridOrigin;

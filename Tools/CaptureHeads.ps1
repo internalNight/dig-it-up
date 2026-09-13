@@ -1,9 +1,9 @@
 param([string]$EngineRoot='D:\UE_5.8')
 $ErrorActionPreference='Stop'
 $projectRoot=Split-Path $PSScriptRoot -Parent
-$out=Join-Path $projectRoot 'Saved\HeadCutaways'
+$out=Join-Path $projectRoot 'Saved\ExcavationLab\HeadCutaways'
 New-Item -ItemType Directory -Path $out -Force | Out-Null
-foreach($head in @('Paddle','Chevron','Spoke','Helix')) {
+foreach($head in @('Paddle','Chevron','BucketWheel','Spoke','Helix')) {
     $started=Get-Date
     $arguments='"'+(Join-Path $projectRoot 'SandExcavator.uproject')+'" -game -d3d12 -sm6 -windowed -ResX=1280 -ResY=720 -unattended -nosound -SandRoadheaderBench -SandHeadInspect -SandHead='+$head+' -SandCaptureSurfacePreview -SandCaptureDelaySeconds=2 -log=HeadCutaway_'+$head+'.log'
     $proc=Start-Process -FilePath (Join-Path $EngineRoot 'Engine\Binaries\Win64\UnrealEditor.exe') -ArgumentList $arguments -PassThru -WindowStyle Hidden

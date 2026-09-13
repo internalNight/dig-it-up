@@ -69,6 +69,9 @@ public:
     float GetStickAngleDegrees() const { return StickAngleDegrees; }
     float GetBucketAngleDegrees() const { return BucketAngleDegrees; }
     int32 GetGroundedSupportCount() const { return GroundedSupportCount; }
+    void SetAppliedContactForce(const FVector& Force) { AppliedContactForce=Force; }
+    float GetTractionBudgetN() const {return TractionBudgetN;}
+    float GetDriveTargetMps() const {return DriveTargetMps;}
 
 protected:
     virtual void BeginPlay() override;
@@ -136,4 +139,6 @@ protected:
     bool bHasSandSupportSamples = false;
     int32 GroundedSupportCount = 4;
     float CurrentTerrainGradientMagnitude = 0.0f;
+    FVector AppliedContactForce=FVector::ZeroVector;
+    float TractionBudgetN=0,DriveTargetMps=0;
 };

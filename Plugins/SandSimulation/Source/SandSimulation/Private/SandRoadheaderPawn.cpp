@@ -2,6 +2,7 @@
 #include "SandMPMSolver.h"
 #include "SandMachineKinematics.h"
 #include "SandMachineDrive.h"
+#include "SandTraction.h"
 #include "SandSurfacePreviewActor.h"
 #include "Components/BoxComponent.h"
 #include "Components/StaticMeshComponent.h"
@@ -20,6 +21,11 @@
 
 using namespace Sand::Machine;
 
+float ASandRoadheaderPawn::GetFeedFraction() const
+{
+    return FParse::Param(FCommandLine::Get(),TEXT("SandFeedControl"))?FeedFraction(MeasuredDraftN,DrumLoad):1.f;
+}
+
 ASandRoadheaderPawn::ASandRoadheaderPawn()
 {
     ToolMount=CreateDefaultSubobject<USceneComponent>(TEXT("ConveyorMount"));
@@ -30,12 +36,12 @@ ASandRoadheaderPawn::ASandRoadheaderPawn()
     static ConstructorHelpers::FObjectFinder<UMaterialInterface> Orange(TEXT("/Engine/TemplateResources/MI_Template_BaseOrange.MI_Template_BaseOrange"));
     // First two entries are existing track colliders; all other physical boxes
     // have a matching visible part. No invisible intake/capture volume.
-    for(int32 I=2; I<28; ++I)
+    for(int32 I=2; I<64; ++I)
     {
         auto* M=CreateDefaultSubobject<UStaticMeshComponent>(*FString::Printf(TEXT("MachinePart%d"),I));
         M->SetupAttachment(ChassisBody);
         M->SetStaticMesh(Cube.Object);
-        M->SetMaterial(0,(I>=7 && I<7+DrumCount) ? Orange.Object : Steel.Object);
+        M->SetMaterial(0,(I>=7 && I<7+HeadElementCount()) ? Orange.Object : Steel.Object);
         M->SetCollisionEnabled(ECollisionEnabled::NoCollision);
         MachineVisuals.Add(M);
     }
@@ -63,8 +69,14 @@ void ASandRoadheaderPawn::BeginPlay()
     bDebugPoints=FParse::Param(FCommandLine::Get(),TEXT("SandDebugPoints"));
     bChainStopped=FParse::Param(FCommandLine::Get(),TEXT("SandChainStopped"));
     bCutTest=bAutoTest && FParse::Param(FCommandLine::Get(),TEXT("SandCutTest"));
+    bHoldTest=bAutoTest && FParse::Param(FCommandLine::Get(),TEXT("SandHoldTest"));
+    bCutTest|=bHoldTest;
     FParse::Value(FCommandLine::Get(),TEXT("SandHead="),HeadType);
-    if(HeadType!=TEXT("Paddle") && HeadType!=TEXT("Chevron") && HeadType!=TEXT("Spoke") && HeadType!=TEXT("Helix"))
+    FParse::Value(FCommandLine::Get(),TEXT("SandSoilBench="),SoilCase);
+    FParse::Value(FCommandLine::Get(),TEXT("SandBladeAngle="),BladeAngle);
+    FParse::Value(FCommandLine::Get(),TEXT("SandBladeDepth="),BladeDepth);
+    FParse::Value(FCommandLine::Get(),TEXT("SandBladeSpeed="),BladeSpeed);
+    if(HeadType!=TEXT("Paddle") && HeadType!=TEXT("Chevron") && HeadType!=TEXT("Spoke") && HeadType!=TEXT("Helix") && HeadType!=TEXT("BucketWheel"))
     {
         UE_LOG(LogTemp,Warning,TEXT("Unknown SandHead; using Paddle")); HeadType=TEXT("Paddle");
     }
@@ -97,19 +109,8 @@ void ASandRoadheaderPawn::BeginPlay()
     ToolMount->SetRelativeLocation(FVector(0,0,FMath::Clamp(HeightCm,-10.0f,50.0f)));
     ToolMount->SetRelativeRotation(FRotator(HeadPitch,0,0));
     UE_LOG(LogTemp,Display,TEXT("HEAD_CONFIG type=%s pitchDeg=%.2f mountHeightCm=%.2f fixedBench=%d"),*HeadType,HeadPitch,HeightCm,bBench);
-    if(bBench)
-    {
-        Sand::MPM::FToolColliderState T; BuildPhysicalTool(T,0);
-        for(int32 I=28;I<(int32)T.ColliderCount;++I)
-        {
-            auto* V=NewObject<UStaticMeshComponent>(this);
-            V->SetStaticMesh(LoadObject<UStaticMesh>(nullptr,TEXT("/Engine/BasicShapes/Cube.Cube")));
-            V->SetCollisionEnabled(ECollisionEnabled::NoCollision);
-            V->RegisterComponent();
-            V->AttachToComponent(ChassisBody,FAttachmentTransformRules::KeepWorldTransform);
-            MachineVisuals.Add(V);
-        }
-    }
+    auto* HeadMaterial=LoadObject<UMaterialInterface>(nullptr,TEXT("/Engine/TemplateResources/MI_Template_BaseOrange.MI_Template_BaseOrange"));
+    for(int32 I=7;I<7+HeadElementCount();++I) MachineVisuals[I-2]->SetMaterial(0,HeadMaterial);
     if(FParse::Param(FCommandLine::Get(),TEXT("SandRoadheaderInside")))
     {
         bInternalCamera=true;
@@ -158,8 +159,13 @@ void ASandRoadheaderPawn::Tick(float Dt)
     {
         const float Input=(PC->IsInputKeyDown(EKeys::Q)?1.0f:0.0f)-(PC->IsInputKeyDown(EKeys::E)?1.0f:0.0f);
         HeadPitch=FMath::Clamp(HeadPitch+Input*Dt*12,-25.0f,18.0f);
-        if(bCutTest && !bPresetPitch)
+        if(bCutTest && !bPresetPitch && !FParse::Param(FCommandLine::Get(),TEXT("SandFeedControl")))
             HeadPitch=-FMath::Min(15.0f,PhysicalTime*4.0f);
+        if(FParse::Param(FCommandLine::Get(),TEXT("SandFeedControl"))) {
+            // Load-limited depth command. Lift under overload; approach slowly.
+            if(FMath::Abs(MeasuredDraftN)>65 || FMath::Abs(DrumLoad)>180) HeadPitch=FMath::Min(18.f,HeadPitch+Dt*5);
+            else if(bCutTest) HeadPitch=FMath::Max(-15.f,HeadPitch-Dt*.8f);
+        }
         ToolMount->SetRelativeRotation(FRotator(HeadPitch,0,0));
     }
     UpdateMachineVisuals();
@@ -169,6 +175,22 @@ void ASandRoadheaderPawn::BuildPhysicalTool(Sand::MPM::FToolColliderState& Tool,
 {
     using namespace Sand::MPM;
     Tool=FToolColliderState{};
+    if(!SoilCase.IsEmpty()) {
+        Tool.AddCollider().CenterMeters=FVector3f(0,0,-10);
+        Tool.AddCollider().CenterMeters=FVector3f(0,0,-10);
+        if(SoilCase==TEXT("Blade")) {
+            auto& C=Tool.AddCollider();
+            const float A=FMath::DegreesToRadians(BladeAngle);
+            C.AxisX=FVector3f(FMath::Sin(A),0,-FMath::Cos(A));
+            C.AxisY=FVector3f(0,1,0); C.AxisZ=FVector3f(FMath::Cos(A),0,FMath::Sin(A));
+            C.CenterMeters=FVector3f(.94f-BladeSpeed*FMath::Clamp(PhysicalTime-1.f,0.f,7.f),0,.42f-(BladeDepth+.02f)*FMath::Min(PhysicalTime,1.f))+.15f*C.AxisZ;
+            C.HalfExtentsMeters=FVector3f(.0125f,.14f,.15f);
+            C.LinearVelocityMetersPerSecond=FVector3f(PhysicalTime>=1 && PhysicalTime<8 ? -BladeSpeed:0,0,0);
+            if(PhysicalTime<1) C.LinearVelocityMetersPerSecond.Z=-(BladeDepth+.02f);
+            C.SeparationSpeedLimit=.05f;
+        }
+        return;
+    }
     const FTransform Mount=ToolMount->GetComponentTransform();
     const FVector3f Origin(Mount.GetLocation()/100.0);
     const FQuat4f Rotation(Mount.GetRotation());
@@ -192,14 +214,22 @@ void ASandRoadheaderPawn::BuildPhysicalTool(Sand::MPM::FToolColliderState& Tool,
     Box(FVector3f(-.15f,-.235f,.065f),FVector3f(.47f,.015f,.08f));
     Box(FVector3f(-.15f,.235f,.065f),FVector3f(.47f,.015f,.08f));
     const bool Axial=HeadType==TEXT("Spoke") || HeadType==TEXT("Helix");
-    Box(FVector3f(.51f,0,.01f),Axial?FVector3f(.18f,.035f,.035f):FVector3f(.10f,.23f,.10f));
-    Box(FVector3f(.51f,0,.01f),Axial?FVector3f(.16f,.04f,.04f):FVector3f(.07f,.255f,.07f));
-    for(int32 I=0;I<DrumCount;++I)
+    Box(Axial?FVector3f(.59f,0,.16f):FVector3f(.51f,0,.01f),Axial?FVector3f(.24f,.035f,.035f):FVector3f(.10f,.23f,.10f));
+    Box(Axial?FVector3f(.59f,0,.16f):FVector3f(.51f,0,.01f),Axial?FVector3f(.24f,.035f,.035f):FVector3f(.07f,.255f,.07f));
+    for(int32 I=0;I<HeadElementCount();++I)
     {
         auto& C=Tool.AddCollider(); C.Motion=1; C.MotionOrigin=Origin; C.MotionRotation=Rotation;
         C.Phase=DrumAngle+I*2*PI/DrumCount; C.Speed=-DrumOmega;
         C.HalfExtentsMeters=FVector3f(.055f,.23f,.022f);
-        if(HeadType!=TEXT("Paddle"))
+        if(HeadType==TEXT("BucketWheel")) {
+            C.Motion=3; C.Phase=DrumAngle;
+            const float A=(I/2)*2*PI/8;
+            const FQuat4f Around(FVector3f(0,1,0),A);
+            C.RotorOffset=Around.RotateVector(I%2?FVector3f(.18f,0,.04f):FVector3f(.145f,0,0));
+            C.RotorOrientation=Around;
+            C.HalfExtentsMeters=I%2?FVector3f(.02f,.23f,.05f):FVector3f(.06f,.23f,.02f);
+        }
+        else if(HeadType!=TEXT("Paddle"))
         {
             C.Motion=3; C.Phase=DrumAngle;
             if(HeadType==TEXT("Chevron"))
@@ -215,7 +245,7 @@ void ASandRoadheaderPawn::BuildPhysicalTool(Sand::MPM::FToolColliderState& Tool,
             else
             {
                 C.RotorAxis=FVector3f(1,0,0);
-                const float A=I*2*PI/DrumCount;
+                const float A=I*2*PI/HeadElementCount();
                 const FQuat4f Around(C.RotorAxis,A);
                 if(HeadType==TEXT("Spoke"))
                 {
@@ -227,9 +257,11 @@ void ASandRoadheaderPawn::BuildPhysicalTool(Sand::MPM::FToolColliderState& Tool,
                 {
                     // One turn assembled from inclined plates; deliberately
                     // labelled segmented helix, not a continuous auger flight.
-                    C.RotorOffset=Around.RotateVector(FVector3f(-.14f+I*.04f,.12f,0));
-                    C.RotorOrientation=Around*FQuat4f(FVector3f(0,1,0),-.45f);
-                    C.HalfExtentsMeters=FVector3f(.025f,.085f,.055f);
+                    // Negative pitch matches the plate normal and negative
+                    // rotation: the screw's axial phase travels toward -X.
+                    C.RotorOffset=Around.RotateVector(FVector3f(.225f-I*.015f,.12f,0));
+                    C.RotorOrientation=Around*FQuat4f(FVector3f(0,1,0),-.445f);
+                    C.HalfExtentsMeters=FVector3f(.014f,.085f,.033f);
                 }
             }
         }
@@ -246,7 +278,19 @@ void ASandRoadheaderPawn::BuildPhysicalTool(Sand::MPM::FToolColliderState& Tool,
     // rear-to-tray route open. Guides return thrown material by solid contact.
     Box(FVector3f(.50f,-.26f,.07f),FVector3f(.22f,.02f,.18f));
     Box(FVector3f(.50f,.26f,.07f),FVector3f(.22f,.02f,.18f));
-    Box(FVector3f(.48f,0,.265f),FVector3f(.24f,.24f,.015f));
+    Box(FVector3f(.48f,0,Axial?.40f:.265f),FVector3f(.24f,.24f,.015f));
+    if(Axial) {
+        // Catch material below the axial head and bridge the previous open gap.
+        // A sloping shoe rises toward the rear tray; no particle capture.
+        auto* Shoe=Box(FVector3f(.50f,0,-.065f),FVector3f(.24f,.23f,.015f));
+        const FQuat4f Tilt=Rotation*FQuat4f(FVector3f(0,1,0),.35f);
+        Shoe->AxisX=Tilt.GetAxisX(); Shoe->AxisY=Tilt.GetAxisY(); Shoe->AxisZ=Tilt.GetAxisZ();
+        // Move axial rotation above the shoe so the lower blade clears it.
+        for(int32 I=7;I<7+HeadElementCount();++I) {
+            auto& C=Tool.Colliders[I]; C.RotorCenter=FVector3f(.59f,0,.16f);
+            C=SampleMachineCollider(C,Seconds);
+        }
+    }
     // Motion is physical contact only; never enable the excavator carrier.
     for(uint32 I=0;I<Tool.ColliderCount;++I)
     {
@@ -279,6 +323,7 @@ void ASandRoadheaderPawn::BuildPhysicalTool(Sand::MPM::FToolColliderState& Tool,
 void ASandRoadheaderPawn::UpdateMachineVisuals()
 {
     Sand::MPM::FToolColliderState T; BuildPhysicalTool(T,0);
+    for(int32 J=0;J<MachineVisuals.Num();++J) MachineVisuals[J]->SetVisibility(J+2<(int32)T.ColliderCount);
     for(int32 I=2;I<(int32)T.ColliderCount && I-2<MachineVisuals.Num();++I)
     {
         const auto& C=T.Colliders[I];
@@ -289,7 +334,7 @@ void ASandRoadheaderPawn::UpdateMachineVisuals()
         // Explicit cutaway inspection: hide casing and feeder visuals only.
         // Their contact geometry remains active; never use this as an open-case test.
         const bool Cutaway=FParse::Param(FCommandLine::Get(),TEXT("SandHeadInspect"));
-        V->SetVisibility(!(Cutaway && I>=25));
+        V->SetVisibility(!(Cutaway && I>=7+HeadElementCount()+BladeCount));
         V->SetWorldLocationAndRotation(FVector(C.CenterMeters)*100,FQuat(M));
         V->SetWorldScale3D(FVector(C.HalfExtentsMeters)*2);
     }
@@ -304,18 +349,23 @@ bool ASandRoadheaderPawn::IsConveyorRegion(const FVector3f& Position) const
 void ASandRoadheaderPawn::CompletePhysicalStep(const Sand::MPM::FToolInteractionResult& R,
     float Dt,const TArray<Sand::MPM::FParticleData>& Particles)
 {
+    if(!SoilCase.IsEmpty()) { CompleteSoilStep(R,Dt,Particles); return; }
     Sand::MPM::FToolColliderState T; BuildPhysicalTool(T,Dt*0.5f);
-    const FVector3f DrumCenter(ToolMount->GetComponentTransform().TransformPosition(FVector(51,0,1))/100.0);
+    const bool Axial=HeadType==TEXT("Spoke") || HeadType==TEXT("Helix");
+    const FVector3f DrumCenter(ToolMount->GetComponentTransform().TransformPosition(Axial?FVector(59,0,16):FVector(51,0,1))/100.0);
     const FVector3f Axis((HeadType==TEXT("Spoke") || HeadType==TEXT("Helix"))?ToolMount->GetForwardVector():ToolMount->GetRightVector());
     float DrumImpulse=0, ChainImpulse=0;
-    for(int32 I=7;I<7+DrumCount;++I)
+    for(int32 I=7;I<7+HeadElementCount();++I)
     {
         const FVector3f Torque=R.ColliderAngular[I]+FVector3f::CrossProduct(T.Colliders[I].CenterMeters-DrumCenter,R.ColliderLinear[I]);
         DrumImpulse-=FVector3f::DotProduct(Torque,Axis);
     }
-    for(int32 I=7+DrumCount;I<7+DrumCount+BladeCount;++I)
+    for(int32 I=7+HeadElementCount();I<7+HeadElementCount()+BladeCount;++I)
         ChainImpulse+=FVector3f::DotProduct(R.ColliderLinear[I],T.Colliders[I].AxisX);
     DrumLoad=DrumImpulse/FMath::Max(Dt,1.e-6f);
+    FVector HeadReaction=FVector::ZeroVector;
+    for(int32 I=7;I<7+HeadElementCount();++I) HeadReaction-=FVector(R.ColliderLinear[I])/Dt;
+    MeasuredDraftN=FVector::DotProduct(HeadReaction,GetActorForwardVector());
     ChainLoad=ChainImpulse/FMath::Max(Dt,1.e-6f);
     // Advance angles using exactly the speed submitted to the completed GPU step.
     DrumAngle=FMath::Fmod(DrumAngle-DrumOmega*Dt,2*PI);
@@ -391,12 +441,14 @@ void ASandRoadheaderPawn::CompletePhysicalStep(const Sand::MPM::FToolInteraction
         }
         if(InitialMass<0) InitialMass=Mass;
         FVector3f HeadImpulse=FVector3f::ZeroVector;
-        for(int32 I=7;I<7+DrumCount;++I) HeadImpulse+=R.ColliderLinear[I];
+        for(int32 I=7;I<7+HeadElementCount();++I) HeadImpulse+=R.ColliderLinear[I];
         const FVector Reaction=FVector(-HeadImpulse)/FMath::Max(Dt,1.e-6f);
         const FVector Velocity=ChassisBody->GetPhysicsLinearVelocity()/100.0;
-        UE_LOG(LogTemp,Display,TEXT("HEAD_DIAGNOSTIC type=%s t=%.2f pitchDeg=%.2f rotorFxN=%.3f rotorFyN=%.3f rotorFzN=%.3f chassisSpeedMps=%.4f displacementM=%.4f fixedBench=%d"),
+        UE_LOG(LogTemp,Display,TEXT("HEAD_DIAGNOSTIC type=%s t=%.2f pitchDeg=%.2f rotorFxN=%.3f rotorFyN=%.3f rotorFzN=%.3f chassisSpeedMps=%.4f displacementM=%.4f horizontalDisplacementM=%.4f fixedBench=%d"),
             *HeadType,PhysicalTime,HeadPitch,Reaction.X,Reaction.Y,Reaction.Z,Velocity.Size(),
-            FVector::Dist(ChassisBody->GetComponentLocation(),InitialChassisLocation)/100.0,bBench);
+            FVector::Dist(ChassisBody->GetComponentLocation(),InitialChassisLocation)/100.0,
+            FVector::Dist2D(ChassisBody->GetComponentLocation(),InitialChassisLocation)/100.0,bBench);
+        UE_LOG(LogTemp,Display,TEXT("FEED_CONTROL t=%.3f worldT=%.3f fraction=%.3f draftN=%.3f tractionBudgetN=%.3f targetMps=%.4f"),PhysicalTime,GetWorld()->GetTimeSeconds(),GetFeedFraction(),MeasuredDraftN,GetTractionBudgetN(),GetDriveTargetMps());
         UE_LOG(LogTemp,Display,TEXT("ROADHEADER t=%.2f rpm=%.2f chain=%.3f torque=%.2f mass=%.6f massError=%.9f rearMass=%.6f delivered=%.6f nonfinite=%d carried=%d"),
             PhysicalTime,GetDrumRPM(),ChainSpeed,DrumLoad,Mass,Mass-InitialMass,RearMass,DeliveredMass,NonFinite,Carried);
         if(bAutoTest && PhysicalTime>=16)
@@ -405,5 +457,34 @@ void ASandRoadheaderPawn::CompletePhysicalStep(const Sand::MPM::FToolInteraction
             bAutoTest=false;
             FTSTicker::GetCoreTicker().AddTicker(FTickerDelegate::CreateLambda([](float){ FPlatformMisc::RequestExit(false); return false; }),1.0f);
         }
+    }
+}
+
+void ASandRoadheaderPawn::CompleteSoilStep(const Sand::MPM::FToolInteractionResult& R,float Dt,const TArray<Sand::MPM::FParticleData>& Particles)
+{
+    if(!bAutoTest) return;
+    const FVector F=-FVector(R.ColliderLinear[2])/Dt;
+    const float Speed=PhysicalTime>=1 && PhysicalTime<8 ? BladeSpeed:0;
+    BladeWork+=F.X*Speed*Dt;
+    if(PhysicalTime>=1 && PhysicalTime<8) { ForceIntegral+=FMath::Abs(F.X)*Dt; CuttingSeconds+=Dt; }
+    PhysicalTime+=Dt;
+    UpdateMachineVisuals();
+    if(Particles.IsEmpty() || PhysicalTime<NextReport) return;
+    NextReport=PhysicalTime+.5f;
+    double Mass=0,KE=0,COMZ=0; int32 Nonfinite=0;
+    float MinX=1.e9f,MaxX=-1.e9f;
+    for(const auto& P:Particles) {
+        const float M=P.PositionAndMass.W;
+        Mass+=M; KE+=.5*M*FVector3f(P.VelocityAndVolume).SquaredLength(); COMZ+=M*P.PositionAndMass.Z;
+        MinX=FMath::Min(MinX,P.PositionAndMass.X); MaxX=FMath::Max(MaxX,P.PositionAndMass.X);
+        if(P.PositionAndMass.ContainsNaN() || P.VelocityAndVolume.ContainsNaN() || P.StressRow0AndCompaction.ContainsNaN() || P.StressRemainder.ContainsNaN()) ++Nonfinite;
+    }
+    if(InitialMass<0) InitialMass=Mass;
+    UE_LOG(LogTemp,Display,TEXT("SOIL_BENCH case=%s t=%.3f angle=%.1f depth=%.3f speed=%.3f FxN=%.4f FzN=%.4f workJ=%.5f meanAbsFxN=%.4f massKg=%.6f massError=%.9f kineticJ=%.5f comZ=%.5f spanX=%.5f nonfinite=%d"),
+        *SoilCase,PhysicalTime,BladeAngle,BladeDepth,Speed,F.X,F.Z,BladeWork,ForceIntegral/FMath::Max(CuttingSeconds,.01),Mass,Mass-InitialMass,KE,COMZ/Mass,MaxX-MinX,Nonfinite);
+    if(PhysicalTime>=8 && bAutoTest) {
+        bAutoTest=false;
+        FScreenshotRequest::RequestScreenshot(FPaths::ProjectSavedDir()/TEXT("SoilBench.png"),true,false);
+        FTSTicker::GetCoreTicker().AddTicker(FTickerDelegate::CreateLambda([](float){ FPlatformMisc::RequestExit(false); return false; }),1.f);
     }
 }

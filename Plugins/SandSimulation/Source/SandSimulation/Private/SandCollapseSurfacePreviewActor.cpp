@@ -31,11 +31,23 @@ void ASandCollapseSurfacePreviewActor::BeginPlay()
     FSandMaterialParameters Material =
         FParse::Param(FCommandLine::Get(), TEXT("SandLooseBaseline"))
         ? FSandMaterialParameters() : RuntimeMaterial;
+    FString Model;
+    FParse::Value(FCommandLine::Get(),TEXT("SandMaterial="),Model);
+    if(Model==TEXT("DryCorotated")) {
+        Material=FSandMaterialParameters();
+        Material.bObjectiveMaterial=true;
+        Material.InternalFrictionAngleDegrees=35;
+        Material.CohesionPa=0;
+        Material.DilationAngleDegrees=0;
+        Material.HardeningRate=0;
+        Material.InitialRelativeCompaction=.5f;
+    }
     // Independent sensitivity controls. These are not calibrated soil presets.
     FParse::Value(FCommandLine::Get(),TEXT("SandPhi="),Material.InternalFrictionAngleDegrees);
     FParse::Value(FCommandLine::Get(),TEXT("SandCohesionPa="),Material.CohesionPa);
     FParse::Value(FCommandLine::Get(),TEXT("SandToolMu="),Material.ToolFrictionCoefficient);
     FParse::Value(FCommandLine::Get(),TEXT("SandDamping="),Material.VelocityDampingPerSecond);
+    FParse::Value(FCommandLine::Get(),TEXT("SandDilation="),Material.DilationAngleDegrees);
     FString MaterialError;
     if(!FMath::IsFinite(Material.InternalFrictionAngleDegrees) || !FMath::IsFinite(Material.CohesionPa) ||
         !FMath::IsFinite(Material.ToolFrictionCoefficient) || !FMath::IsFinite(Material.VelocityDampingPerSecond) || !Material.IsValid(&MaterialError))
@@ -43,8 +55,8 @@ void ASandCollapseSurfacePreviewActor::BeginPlay()
         UE_LOG(LogTemp,Fatal,TEXT("Invalid sand sensitivity parameters: %s"),*MaterialError);
         return;
     }
-    UE_LOG(LogTemp,Display,TEXT("SOIL_CONFIG phiDeg=%.3f cohesionPa=%.3f toolMu=%.3f dampingPerSec=%.3f dilationActive=0"),
-        Material.InternalFrictionAngleDegrees,Material.CohesionPa,Material.ToolFrictionCoefficient,Material.VelocityDampingPerSecond);
+    UE_LOG(LogTemp,Display,TEXT("SOIL_CONFIG phiDeg=%.3f cohesionPa=%.3f toolMu=%.3f dampingPerSec=%.3f dilationActive=%d dilationDeg=%.3f"),
+        Material.InternalFrictionAngleDegrees,Material.CohesionPa,Material.ToolFrictionCoefficient,Material.VelocityDampingPerSecond,Material.bObjectiveMaterial,Material.DilationAngleDegrees);
     SimulationState = Sand::MPM::CreateRuntimeSandboxSimulation(Material);
     // Acceptance fixture: a sloping corner excavation with two intact bottom layers.
     // Removed material is stacked in the upper air region, conserving mass.
@@ -322,6 +334,7 @@ void ASandCollapseSurfacePreviewActor::Tick(const float DeltaSeconds)
                     WeakThis->SmoothedBucketReactionImpulseMeters,
                     ReactionImpulseMeters,
                     0.24f);
+                WeakExcavator->SetAppliedContactForce(WeakThis->SmoothedBucketReactionImpulseMeters/OuterStepSeconds);
                 if(bLogFrame)
                 {
                     const FVector RawForce=-FVector(ToolInteraction.SandLinearImpulseKgMetersPerSecond)/OuterStepSeconds;

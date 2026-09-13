@@ -92,6 +92,17 @@ void ASandHUD::DrawHUD()
 
     const ASandExcavatorPawn* Excavator = Cast<ASandExcavatorPawn>(PlayerOwner->GetPawn());
     const auto* Machine=Cast<ASandRoadheaderPawn>(Excavator);
+    FString SoilCase;
+    if(FParse::Value(FCommandLine::Get(),TEXT("SandSoilBench="),SoilCase)) {
+        float Angle=60,Depth=.1f;
+        FParse::Value(FCommandLine::Get(),TEXT("SandBladeAngle="),Angle);
+        FParse::Value(FCommandLine::Get(),TEXT("SandBladeDepth="),Depth);
+        DrawRect(FLinearColor(.015f,.02f,.025f,.8f),Margin,Margin,450*UiScale,80*UiScale);
+        DrawText(TEXT("EXCAVATION LAB  /  SOIL BENCH"),FLinearColor(1,.7f,.12f),Margin+12*UiScale,Margin+8*UiScale,Font,UiScale);
+        DrawText(FString::Printf(TEXT("%s | Blade %.0f deg to horizontal | Depth %.2f m"),*SoilCase,Angle,Depth),FLinearColor::White,Margin+12*UiScale,Margin+31*UiScale,Font,.9f*UiScale);
+        DrawText(TEXT("Numerical experiment - material not calibrated"),FLinearColor(1,.65f,.65f),Margin+12*UiScale,Margin+54*UiScale,Font,.9f*UiScale);
+        return;
+    }
     const float SpeedKmh = Excavator != nullptr
         ? Excavator->GetVelocity().Size2D() * 0.036f
         : 0.0f;
@@ -120,6 +131,9 @@ void ASandHUD::DrawHUD()
             Margin, PanelY, 270.0f * UiScale, 212.0f * UiScale);
         if(Machine)
         {
+            if(FParse::Param(FCommandLine::Get(),TEXT("SandFeedControl")))
+                DrawText(FString::Printf(TEXT("Feed assist %.0f%% | Traction budget %.0f N | Target %.3f m/s"),100*Machine->GetFeedFraction(),Machine->GetTractionBudgetN(),Machine->GetDriveTargetMps()),
+                    FLinearColor(.6f,1,.8f),Margin,Canvas->SizeY-65*UiScale,Font,.9f*UiScale);
             DrawText(FString::Printf(TEXT("%s head  |  %.1f rpm  |  Chain %.2f m/s  |  Load %.1f / 240 Nm%s"),*Machine->GetHeadType(),Machine->GetDrumRPM(),Machine->GetConveyorSpeed(),Machine->GetLoadTorque(),FParse::Param(FCommandLine::Get(),TEXT("SandHeadInspect"))?TEXT("  |  CUTAWAY: casing contacts active"):TEXT("")),
                 FLinearColor(1,.8f,.3f),Margin,Canvas->SizeY-40*UiScale,Font,UiScale);
         }

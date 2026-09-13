@@ -10,7 +10,7 @@
 
 namespace Sand::Validation
 {
-constexpr uint32 ElementCount = 4;
+constexpr uint32 ElementCount = 8;
 constexpr uint32 Seed = 41;
 
 class FSandValidationCS final : public FGlobalShader
@@ -120,4 +120,3 @@ bool FSandGPUValidationTest::RunTest(const FString& Parameters)
 }
 
 #endif
-

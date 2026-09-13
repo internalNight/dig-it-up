@@ -1,5 +1,6 @@
 #include "/Engine/Public/Platform.ush"
 #include "/SandSimulation/Private/SandCommon.ush"
+#include "/SandSimulation/Private/SandMaterial.ush"
 
 RWStructuredBuffer<uint> Output;
 uint Seed;
@@ -8,8 +9,25 @@ uint Seed;
 void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 {
     const uint Index = DispatchThreadId.x;
-    if (Index < 4)
+    if (Index < 8)
     {
-        Output[Index] = Seed + Index * 17u;
+        bool Pass=true;
+        const float3x3 Z=(float3x3)0;
+        const float3x3 I=float3x3(1,0,0,0,1,0,0,0,1);
+        if(Index==4) {
+            float3x3 S=SandObjectiveDP(float3x3(-100,0,0,0,-200,0,0,0,-300),float3x3(0,-1,0,1,0,0,0,0,0),1.5707963268f,1000,1000,2,0,0);
+            Pass=abs(S[0][0]+200)<.01 && abs(S[1][1]+100)<.01 && abs(S[2][2]+300)<.01 && abs(S[0][1])<.01;
+        }
+        if(Index==5) {
+            float3x3 S=SandObjectiveDP(-100*I,Z,.01,1000,1000,1.2,0,0);
+            Pass=abs(SandTrace(S)+300)<.01 && SandQ(S)<.01;
+        }
+        if(Index==6 || Index==7) {
+            float Psi=Index==7?.5:0;
+            float3x3 S=SandObjectiveDP(float3x3(-100,100,0,100,-100,0,0,0,-100),Z,.01,1000,1000,1.2,0,Psi);
+            float P=-SandTrace(S)/3;
+            Pass=abs(SandQ(S)-1.2*P)<.01 && (Index==6?abs(P-100)<.01:P>100);
+        }
+        Output[Index] = Pass ? Seed + Index * 17u : 0u;
     }
 }

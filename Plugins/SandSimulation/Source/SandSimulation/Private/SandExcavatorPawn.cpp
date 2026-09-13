@@ -1,4 +1,5 @@
 #include "SandExcavatorPawn.h"
+#include "SandTraction.h"
 #include "SandRoadheaderPawn.h"
 
 #include "Camera/CameraComponent.h"
@@ -389,6 +390,27 @@ void ASandExcavatorPawn::Tick(const float DeltaSeconds)
     FVector HorizontalForward = GetActorForwardVector();
     HorizontalForward.Z = 0.0;
     HorizontalForward.Normalize();
+    const bool LimitedTraction=FParse::Param(FCommandLine::Get(),TEXT("SandTraction"));
+    if(LimitedTraction) {
+        const float Mass=ChassisBody->GetMass();
+        const float Normal=GroundedSupportCount>0?FMath::Max(0.f,Mass*9.81f-(float)AppliedContactForce.Z):0;
+        float Mu=.6f; FParse::Value(FCommandLine::Get(),TEXT("SandTrackMu="),Mu);
+        TractionBudgetN=FMath::Max(0.f,Mu*Normal);
+        float Feed=1;
+        if(const auto* Machine=Cast<ASandRoadheaderPawn>(this)) Feed=Machine->GetFeedFraction();
+        DriveTargetMps=bBrake?0:Throttle*.12f*Feed;
+        const FVector Right=FVector::CrossProduct(FVector::UpVector,HorizontalForward);
+        const FVector V=ChassisBody->GetPhysicsLinearVelocity()/100;
+        const FVector2f F=Sand::Machine::TractionForce(Mass,Normal,Mu,DriveTargetMps,
+            FVector2f(FVector::DotProduct(V,HorizontalForward),FVector::DotProduct(V,Right)),DriveForce/100,
+            bBrake?FMath::Max(DeltaSeconds,.001f):.25f);
+        // Brake requests only the impulse needed to stop within this step.
+        // The shared friction budget still caps it, so overload can slide.
+        ChassisBody->AddForce(100*(HorizontalForward*F.X+Right*F.Y));
+        // Finite steering; no zero-velocity clamp or frame-dependent brake.
+        ChassisBody->AddTorqueInRadians(FVector::UpVector*Steering*FMath::Min(SteeringTorque,TractionBudgetN*1000));
+    }
+    else {
     ChassisBody->AddForce(HorizontalForward * Throttle * DriveForce, NAME_None, false);
     ChassisBody->AddTorqueInRadians(FVector::UpVector * Steering * SteeringTorque, NAME_None, false);
 
@@ -432,6 +454,7 @@ void ASandExcavatorPawn::Tick(const float DeltaSeconds)
     LinearVelocity = Forward * ForwardSpeed + LateralVelocity.GetClampedToMaxSize(18.0f);
     LinearVelocity.Z = FMath::Clamp(VerticalSpeed, -450.0f, 220.0f);
     ChassisBody->SetPhysicsLinearVelocity(LinearVelocity);
+    }
 
     FVector AngularVelocity = ChassisBody->GetPhysicsAngularVelocityInRadians();
     if (FMath::Abs(Steering) < 0.01f)

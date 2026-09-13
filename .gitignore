@@ -21,6 +21,8 @@ Plugins/*/Intermediate/
 
 # Local tooling
 .vscode/
+__pycache__/
+*.pyc
 *.log
 
 # Local captures, test reports, packaged games and portable distributions
