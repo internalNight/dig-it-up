@@ -210,6 +210,27 @@ void MPMP2GCS(uint3 DispatchThreadId : SV_DispatchThreadID)
     }
 }
 
+// Exact local contact geometry. Cylinder is used for closed conveyor end drums.
+bool MPMToolContactGeometry(float3 P, float4 Extent, out float3 N, out float Depth)
+{
+    N=float3(1,0,0); Depth=0;
+    if(Extent.w>0.5f) {
+        const float R=length(P.xz);
+        const float Radial=Extent.x-R, Cap=Extent.y-abs(P.y);
+        if(min(Radial,Cap)<0) return false;
+        Depth=min(Radial,Cap);
+        if(Cap<Radial) N=float3(0,P.y>=0?1:-1,0);
+        else if(R>1.e-8f) N=float3(P.x/R,0,P.z/R);
+        return true;
+    }
+    const float3 D=Extent.xyz-abs(P);
+    if(any(D<0)) return false;
+    if(D.x<=D.y && D.x<=D.z) {N=float3(P.x>=0?1:-1,0,0); Depth=D.x;}
+    else if(D.y<=D.z) {N=float3(0,P.y>=0?1:-1,0); Depth=D.y;}
+    else {N=float3(0,0,P.z>=0?1:-1); Depth=D.z;}
+    return true;
+}
+
 void MPMApplyTangentialFriction(inout float A, inout float B, const float RemovedNormalSpeed)
 {
     const float TangentialSpeed = length(float2(A, B));
@@ -295,22 +316,10 @@ void MPMUpdateGridCS(uint3 DispatchThreadId : SV_DispatchThreadID)
             dot(ToolDelta, ToolAxisX),
             dot(ToolDelta, ToolAxisY),
             dot(ToolDelta, ToolAxisZ));
-        const float3 FaceDistance = MPMToolHalfExtentsMeters[ToolIndex].xyz - abs(LocalPosition);
-        if (all(FaceDistance >= 0.0f))
+        float3 LocalNormal; float PenetrationDepth;
+        if(MPMToolContactGeometry(LocalPosition,MPMToolHalfExtentsMeters[ToolIndex],LocalNormal,PenetrationDepth))
         {
-            float3 ContactNormal;
-            if (FaceDistance.x <= FaceDistance.y && FaceDistance.x <= FaceDistance.z)
-            {
-                ContactNormal = ToolAxisX * (LocalPosition.x >= 0.0f ? 1.0f : -1.0f);
-            }
-            else if (FaceDistance.y <= FaceDistance.z)
-            {
-                ContactNormal = ToolAxisY * (LocalPosition.y >= 0.0f ? 1.0f : -1.0f);
-            }
-            else
-            {
-                ContactNormal = ToolAxisZ * (LocalPosition.z >= 0.0f ? 1.0f : -1.0f);
-            }
+            const float3 ContactNormal=LocalNormal.x*ToolAxisX+LocalNormal.y*ToolAxisY+LocalNormal.z*ToolAxisZ;
 
             const float3 ToolVelocityAtNode = MPMToolLinearVelocitiesMetersPerSecond[ToolIndex].xyz +
                 cross(MPMToolAngularVelocitiesRadiansPerSecond[ToolIndex].xyz, ToolDelta);
@@ -319,7 +328,6 @@ void MPMUpdateGridCS(uint3 DispatchThreadId : SV_DispatchThreadID)
             // Nodes may enter a moving collider while both sand and rigid body travel in the
             // same direction. A modest Baumgarte term expels penetrated material instead of
             // relying only on an already-incoming relative velocity.
-            const float PenetrationDepth = min(FaceDistance.x, min(FaceDistance.y, FaceDistance.z));
             const float SeparationSpeed = min(
                 MPMToolCentersMeters[ToolIndex].w,
                 0.20f * PenetrationDepth / max(MPMDeltaTimeSeconds, 1.0e-6f));
@@ -509,26 +517,10 @@ void MPMG2PCS(uint3 DispatchThreadId : SV_DispatchThreadID)
             dot(ToolDelta, ToolAxisX),
             dot(ToolDelta, ToolAxisY),
             dot(ToolDelta, ToolAxisZ));
-        const float3 FaceDistance = MPMToolHalfExtentsMeters[ToolIndex].xyz - abs(LocalPosition);
-        if (all(FaceDistance >= 0.0f))
+        float3 LocalNormal; float PenetrationDepth;
+        if(MPMToolContactGeometry(LocalPosition,MPMToolHalfExtentsMeters[ToolIndex],LocalNormal,PenetrationDepth))
         {
-            float3 ContactNormal;
-            float PenetrationDepth;
-            if (FaceDistance.x <= FaceDistance.y && FaceDistance.x <= FaceDistance.z)
-            {
-                ContactNormal = ToolAxisX * (LocalPosition.x >= 0.0f ? 1.0f : -1.0f);
-                PenetrationDepth = FaceDistance.x;
-            }
-            else if (FaceDistance.y <= FaceDistance.z)
-            {
-                ContactNormal = ToolAxisY * (LocalPosition.y >= 0.0f ? 1.0f : -1.0f);
-                PenetrationDepth = FaceDistance.y;
-            }
-            else
-            {
-                ContactNormal = ToolAxisZ * (LocalPosition.z >= 0.0f ? 1.0f : -1.0f);
-                PenetrationDepth = FaceDistance.z;
-            }
+            const float3 ContactNormal=LocalNormal.x*ToolAxisX+LocalNormal.y*ToolAxisY+LocalNormal.z*ToolAxisZ;
 
             NewPosition += ContactNormal * (PenetrationDepth + 0.02f * MPMCellSizeMeters);
             const float3 CorrectedToolDelta = NewPosition - ToolCenter;

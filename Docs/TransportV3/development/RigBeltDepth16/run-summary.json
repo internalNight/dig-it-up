@@ -1,0 +1,7 @@
+{
+  "name": "RigBeltDepth16",
+  "arguments": "\"${REPO}\\SandExcavator.uproject\" -game -d3d12 -sm6 -windowed -ResX=1280 -ResY=720 -unattended -nosound -SandRoadheader -SandRoadheaderTest -SandMaterial=DryCorotated -SandTestDuration=36 -log=TransportV3_RigBeltDepth16.log -SandFeedRig -SandHead=BucketWheel -SandHeadHeightCm=16 -SandHeadPitch=-14 -SandWorkingLayout -SandApproach -SandGeometryAudit -SandDrumRPM=30 -SandLiftGuide",
+  "started_utc": "2026-09-13T11:06:10.0026717Z",
+  "binary_sha256": "DE4AC206B03BB838A7E469D6398639027AE81631251934EC08F6EBF2B73202A5",
+  "source_status": "Intermediate source tree not archived; runtime binary identifier and measurements only."
+}

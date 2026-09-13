@@ -12,7 +12,7 @@ if($p.ExitCode -ne 0) {throw "Editor exit code $($p.ExitCode)"}
 $index=Join-Path $report 'index.json'
 if(!(Test-Path -LiteralPath $index) -or (Get-Item -LiteralPath $index).LastWriteTime -lt $started) {throw 'No fresh automation index'}
 $r=Get-Content -LiteralPath $index -Raw | ConvertFrom-Json
-if($r.failed -gt 0 -or $r.notRun -gt 0 -or $r.inProcess -gt 0 -or ($r.succeeded+$r.succeededWithWarnings) -lt 14) {
+if($r.failed -gt 0 -or $r.notRun -gt 0 -or $r.inProcess -gt 0 -or ($r.succeeded+$r.succeededWithWarnings) -lt 18) {
     $r.tests | Where-Object state -ne 'Success' | Select-Object fullTestPath,state,entries | ConvertTo-Json -Depth 7 | Write-Output
     throw "Automation incomplete or failed: $($r.failed) failed"
 }

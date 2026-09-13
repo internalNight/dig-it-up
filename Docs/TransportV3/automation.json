@@ -1,0 +1,79 @@
+{
+  "passed": 18,
+  "warnings": 0,
+  "failed": 0,
+  "tests": [
+    {
+      "name": "SandSimulation.Contact.VisibleSurfaceSupport",
+      "state": "Success"
+    },
+    {
+      "name": "SandSimulation.Goal.FloorExposure",
+      "state": "Success"
+    },
+    {
+      "name": "SandSimulation.GPU.ColumnCollapse",
+      "state": "Success"
+    },
+    {
+      "name": "SandSimulation.GPU.GridTransfer",
+      "state": "Success"
+    },
+    {
+      "name": "SandSimulation.GPU.ParticleInitialization",
+      "state": "Success"
+    },
+    {
+      "name": "SandSimulation.GPU.SurfaceReconstruction",
+      "state": "Success"
+    },
+    {
+      "name": "SandSimulation.GPU.Validation",
+      "state": "Success"
+    },
+    {
+      "name": "SandSimulation.Machine.ArbitraryRotorVelocity",
+      "state": "Success"
+    },
+    {
+      "name": "SandSimulation.Machine.BearingRejectsAirborneSamples",
+      "state": "Success"
+    },
+    {
+      "name": "SandSimulation.Machine.BeltSkinAndRaisedFlight",
+      "state": "Success"
+    },
+    {
+      "name": "SandSimulation.Machine.ClosedChain",
+      "state": "Success"
+    },
+    {
+      "name": "SandSimulation.Machine.DriveUnderLoad",
+      "state": "Success"
+    },
+    {
+      "name": "SandSimulation.Machine.ExactCoupledSubsteps",
+      "state": "Success"
+    },
+    {
+      "name": "SandSimulation.Machine.FiniteTraction",
+      "state": "Success"
+    },
+    {
+      "name": "SandSimulation.Machine.IndependentSolidClearance",
+      "state": "Success"
+    },
+    {
+      "name": "SandSimulation.Machine.RotorContactVelocity",
+      "state": "Success"
+    },
+    {
+      "name": "SandSimulation.Parameters.Defaults",
+      "state": "Success"
+    },
+    {
+      "name": "SandSimulation.Runtime.FullSandboxInitialization",
+      "state": "Success"
+    }
+  ]
+}

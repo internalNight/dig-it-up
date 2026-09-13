@@ -9,6 +9,11 @@
 
 namespace Sand::MPM
 {
+float CouplingStepSeconds();
+inline float FittedInternalStep(float Outer,float MaximumInternal) {
+    const int32 Count=FMath::Max(1,FMath::CeilToInt(Outer/MaximumInternal-1.e-4f));
+    return Outer/Count;
+}
 struct alignas(16) FParticleData
 {
     FVector4f PositionAndMass;
@@ -153,7 +158,9 @@ struct FToolOrientedBoxState
 {
     // Optional analytic machine motion evaluated at each MPM substep.
     FVector3f BaseVelocity = FVector3f::ZeroVector;
-    uint8 Motion = 0; // 0 static sample, 1 drum rotor, 2 chain, 3 arbitrary-axis rotor
+    uint8 Shape = 0; // 0 box, 1 capped cylinder along local Y
+    float ChainDriveRatio=0, SurfaceOffset=0;
+    uint8 Motion = 0; // 0 static sample, 1 drum rotor, 2 chain, 3 arbitrary-axis rotor, 4 endless-belt straight surface
     FVector3f RotorAxis = FVector3f(0,1,0);
     FVector3f RotorCenter = FVector3f(.51f,0,.01f);
     FVector3f RotorOffset = FVector3f::ZeroVector;
@@ -161,6 +168,8 @@ struct FToolOrientedBoxState
     FVector3f MotionOrigin = FVector3f::ZeroVector;
     FQuat4f MotionRotation = FQuat4f::Identity;
     float SeparationSpeedLimit = 2.0f;
+    float OrbitRadius = .145f;
+    float ChainFront = .32f;
     float Phase = 0;
     float Speed = 0;
     FVector3f CenterMeters = FVector3f::ZeroVector;

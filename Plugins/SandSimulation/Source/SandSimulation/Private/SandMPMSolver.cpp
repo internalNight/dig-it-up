@@ -9,10 +9,17 @@
 #include "RenderGraphBuilder.h"
 #include "RenderGraphUtils.h"
 #include "RHICommandList.h"
+#include "RenderingThread.h"
 #include "RHIGPUReadback.h"
 
 namespace Sand::MPM
 {
+float CouplingStepSeconds() {
+    if(!FParse::Param(FCommandLine::Get(),TEXT("SandSynchronous"))) return 1.f/30;
+    int32 Hz=60; FParse::Value(FCommandLine::Get(),TEXT("SandCouplingHz="),Hz);
+    checkf(Hz==30 || Hz==60 || Hz==120,TEXT("SandCouplingHz must be 30, 60 or 120"));
+    return 1.f/Hz;
+}
 IMPLEMENT_GLOBAL_SHADER(FSandMPMP2GCS, "/SandSimulation/Private/SandElastoplasticMPM.usf", "MPMP2GCS", SF_Compute);
 IMPLEMENT_GLOBAL_SHADER(FSandMPMUpdateGridCS, "/SandSimulation/Private/SandElastoplasticMPM.usf", "MPMUpdateGridCS", SF_Compute);
 IMPLEMENT_GLOBAL_SHADER(FSandMPMG2PCS, "/SandSimulation/Private/SandElastoplasticMPM.usf", "MPMG2PCS", SF_Compute);
@@ -232,6 +239,8 @@ void EnqueueValidatedColumnCollapse(
                 G2P->MPMGridOriginMeters = GridOrigin;
                 G2P->MPMPhysicalDomainMinimumMeters = PhysicalMinimum;
                 G2P->MPMPhysicalDomainMaximumMeters = PhysicalMaximum;
+                // G2P advects positions to the end of this substep. Project
+                // against that same end-time solid, not the grid midpoint pose.
                 G2P->MPMToolColliderCount = 0u;
                 G2P->MPMBucketInteriorEnabled = 0u;
                 G2P->MPMParticlesIn = GraphBuilder.CreateSRV(CurrentParticles);
@@ -311,6 +320,8 @@ TSharedRef<FRuntimeSimulationState, ESPMode::ThreadSafe> CreateRuntimeSandboxSim
     State->InternalDeltaSeconds = 1.0f / (State->CellSize <= 0.025f ? 1200.0f : State->CellSize <= 0.03125f ? 900.0f : State->CellSize <= 0.05f ? 600.0f : 300.0f);
     int32 SubstepScale=1; FParse::Value(FCommandLine::Get(),TEXT("SandSubsteps="),SubstepScale);
     State->InternalDeltaSeconds/=FMath::Clamp(SubstepScale,1,4);
+    State->InternalDeltaSeconds=FittedInternalStep(CouplingStepSeconds(),State->InternalDeltaSeconds);
+    UE_LOG(LogTemp,Display,TEXT("TIME_GRID outerSeconds=%.9f internalSeconds=%.9f substeps=%d"),CouplingStepSeconds(),State->InternalDeltaSeconds,FMath::RoundToInt(CouplingStepSeconds()/State->InternalDeltaSeconds));
     State->PhysicalMinimum = FVector3f(-2.5f, -2.5f, 0.0f);
     const float Depth = GetDefault<USandLevelSettings>()->SandDepthMeters;
     State->PhysicalMaximum = FVector3f(2.5f, 2.5f, Depth + 1.0f);
@@ -376,6 +387,13 @@ FToolOrientedBoxState SampleMachineCollider(const FToolOrientedBoxState& C, floa
 {
     auto R=C;
     if (C.Motion==0) { R.CenterMeters += C.LinearVelocityMetersPerSecond*Time; return R; }
+    if(C.Motion==4) {
+        // An endless belt has a stationary geometric envelope and moving skin.
+        // Only chassis translation moves its finite contact envelope.
+        R.CenterMeters+=C.BaseVelocity*Time;
+        R.LinearVelocityMetersPerSecond=C.BaseVelocity+C.MotionRotation.RotateVector(FVector3f(C.Speed,0,0));
+        return R;
+    }
     FVector3f P, X, Y(0,1,0), Z;
     if(C.Motion==3)
     {
@@ -392,20 +410,24 @@ FToolOrientedBoxState SampleMachineCollider(const FToolOrientedBoxState& C, floa
         const float A=C.Phase+C.Speed*Time;
         X=FVector3f(FMath::Cos(A),0,-FMath::Sin(A));
         Z=FVector3f::CrossProduct(X,Y);
-        P=FVector3f(0.51f,0,0.01f)+0.145f*X;
+        P=C.RotorCenter+C.OrbitRadius*X;
         R.AngularVelocityRadiansPerSecond=C.MotionRotation.RotateVector(Y*C.Speed);
-        R.LinearVelocityMetersPerSecond=C.MotionRotation.RotateVector(FVector3f::CrossProduct(Y*C.Speed,0.145f*X));
+        R.LinearVelocityMetersPerSecond=C.MotionRotation.RotateVector(FVector3f::CrossProduct(Y*C.Speed,C.OrbitRadius*X));
     }
     else
     {
-        Sand::Machine::ChainPose(C.Phase+C.Speed*Time,P,X);
+        Sand::Machine::ChainPose(C.Phase+C.Speed*Time,P,X,C.ChainFront);
         Z=FVector3f::CrossProduct(X,Y);
         R.LinearVelocityMetersPerSecond=C.MotionRotation.RotateVector(X*C.Speed);
         // Angular velocity is nonzero only on the semicircular sprockets.
-        float S=FMath::Fmod(C.Phase+C.Speed*Time,Sand::Machine::Loop);
-        if(S<0) S+=Sand::Machine::Loop;
-        bool Turn=(S>Sand::Machine::Run && S<Sand::Machine::Run+PI*Sand::Machine::Radius) || S>2*Sand::Machine::Run+PI*Sand::Machine::Radius;
+        const float PathRun=C.ChainFront-Sand::Machine::Rear, PathLoop=2*PathRun+2*PI*Sand::Machine::Radius;
+        float S=FMath::Fmod(C.Phase+C.Speed*Time,PathLoop);
+        if(S<0) S+=PathLoop;
+        bool Turn=(S>PathRun && S<PathRun+PI*Sand::Machine::Radius) || S>2*PathRun+PI*Sand::Machine::Radius;
         R.AngularVelocityRadiansPerSecond=C.MotionRotation.RotateVector(Y*(Turn ? -C.Speed/Sand::Machine::Radius : 0));
+        const FVector3f Offset=-C.SurfaceOffset*Z;
+        P+=Offset;
+        R.LinearVelocityMetersPerSecond+=FVector3f::CrossProduct(R.AngularVelocityRadiansPerSecond,C.MotionRotation.RotateVector(Offset));
     }
     R.CenterMeters=C.MotionOrigin+C.MotionRotation.RotateVector(P)+C.BaseVelocity*Time;
     R.LinearVelocityMetersPerSecond+=C.BaseVelocity;
@@ -422,8 +444,12 @@ void EnqueueRuntimeSimulationSteps(
     const FToolColliderState& Tool,
     FRuntimeStepCallback&& Completion)
 {
+    // The optional coupled path completes one GPU step before the next world
+    // step. Wall-clock slowdown cannot advance Chaos ahead of the sand.
+    const bool Synchronous=FParse::Param(FCommandLine::Get(),TEXT("SandSynchronous"));
+    auto Finish=MakeShared<TUniqueFunction<void()>,ESPMode::ThreadSafe>();
     ENQUEUE_RENDER_COMMAND(SandRuntimePersistentStep)(
-        [State, InternalStepCount, bReadbackParticles, Tool, Completion = MoveTemp(Completion)](
+        [State, InternalStepCount, bReadbackParticles, Tool, Synchronous, Finish, Completion = MoveTemp(Completion)](
             FRHICommandListImmediate& RHICmdList) mutable
         {
             const double StartSeconds = FPlatformTime::Seconds();
@@ -488,13 +514,13 @@ void EnqueueRuntimeSimulationSteps(
                 for (uint32 ColliderIndex = 0; ColliderIndex < FToolColliderState::MaxColliderCount;
                     ++ColliderIndex)
                 {
-                    const FToolOrientedBoxState Collider = SampleMachineCollider(Tool.Colliders[ColliderIndex], (Step+0.5f)*State->InternalDeltaSeconds);
+                    const FToolOrientedBoxState Collider = SampleMachineCollider(Tool.Colliders[ColliderIndex], (Step+1.0f)*State->InternalDeltaSeconds);
                     Update->MPMToolCentersMeters[ColliderIndex] = FVector4f(Collider.CenterMeters, Collider.SeparationSpeedLimit);
                     Update->MPMToolAxesX[ColliderIndex] = FVector4f(Collider.AxisX, 0.0f);
                     Update->MPMToolAxesY[ColliderIndex] = FVector4f(Collider.AxisY, 0.0f);
                     Update->MPMToolAxesZ[ColliderIndex] = FVector4f(Collider.AxisZ, 0.0f);
                     Update->MPMToolHalfExtentsMeters[ColliderIndex] = FVector4f(
-                        Collider.HalfExtentsMeters, 0.0f);
+                        Collider.HalfExtentsMeters, (float)Collider.Shape);
                     Update->MPMToolLinearVelocitiesMetersPerSecond[ColliderIndex] = FVector4f(
                         Collider.LinearVelocityMetersPerSecond, 0.0f);
                     Update->MPMToolAngularVelocitiesRadiansPerSecond[ColliderIndex] = FVector4f(
@@ -542,7 +568,7 @@ void EnqueueRuntimeSimulationSteps(
                     G2P->MPMToolAxesY[ColliderIndex] = FVector4f(Collider.AxisY, 0.0f);
                     G2P->MPMToolAxesZ[ColliderIndex] = FVector4f(Collider.AxisZ, 0.0f);
                     G2P->MPMToolHalfExtentsMeters[ColliderIndex] = FVector4f(
-                        Collider.HalfExtentsMeters, 0.0f);
+                        Collider.HalfExtentsMeters, (float)Collider.Shape);
                     G2P->MPMToolLinearVelocitiesMetersPerSecond[ColliderIndex] = FVector4f(
                         Collider.LinearVelocityMetersPerSecond, 0.0f);
                     G2P->MPMToolAngularVelocitiesRadiansPerSecond[ColliderIndex] = FVector4f(
@@ -642,11 +668,13 @@ void EnqueueRuntimeSimulationSteps(
             State->bInitialized = true;
             const double GpuSeconds = FPlatformTime::Seconds() - StartSeconds;
 
-            AsyncTask(ENamedThreads::GameThread,
-                [ReadbackParticles, ToolInteraction, GpuSeconds, Completion = MoveTemp(Completion)]() mutable
+            auto Invoke=[ReadbackParticles, ToolInteraction, GpuSeconds, Completion = MoveTemp(Completion)]() mutable
                 {
                     Completion(MoveTemp(*ReadbackParticles), *ToolInteraction, GpuSeconds);
-                });
+                };
+            if(Synchronous) *Finish=MoveTemp(Invoke);
+            else AsyncTask(ENamedThreads::GameThread,MoveTemp(Invoke));
         });
+    if(Synchronous) { FlushRenderingCommands(); if(*Finish) (*Finish)(); }
 }
 }

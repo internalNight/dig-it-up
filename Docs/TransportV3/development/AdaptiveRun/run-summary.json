@@ -1,0 +1,6 @@
+{
+  "name": "AdaptiveRun",
+  "arguments": "\"${REPO}\\SandExcavator.uproject\" -game -d3d12 -sm6 -windowed -ResX=1280 -ResY=720 -unattended -nosound -SandRoadheader -SandRoadheaderTest -SandMaterial=DryCorotated -SandTestDuration=60 -log=TransportV3_AdaptiveRun.log -SandRoadheader -SandMaterial=DryCorotated -SandHead=BucketWheel -SandWorkingLayout -SandLiftGuide -SandApproach -SandAdaptiveFeed -SandDenseSupport -SandHeadHeightCm=16 -SandHeadPitch=-14 -SandDrumRPM=80 -SandSynchronous -SandDirectReaction -SandTraction -SandTractionCompensation -SandMachineMassKg=100 -SandDriveForceN=600 -SandGeometryAudit -SandCutTest -SandFeedEnd=50 -SandMachineCapture",
+  "binary_sha256": "DAB94B14B7B842B8945160DCCD4398DAE6B4CFC6607AFC94969E07A3AD92A590",
+  "status": "Superseded by Physical matrix. Penetration diagnostic omitted base translation; G2P still used midpoint solids."
+}

@@ -4,10 +4,10 @@ namespace Sand::Machine {
 // Finite planar contact budget. A first contact model, not a calibrated
 // Bekker/Janosi track model. Forces in N, speeds in m/s, mass in kg.
 inline FVector2f TractionForce(float Mass,float Normal,float Mu,float Target,
-    FVector2f Velocity,float DriveLimit,float Response=.25f) {
+    FVector2f Velocity,float DriveLimit,float Response=.25f,FVector2f External=FVector2f::ZeroVector) {
     if(Normal<=0 || Mass<=0) return FVector2f::ZeroVector;
-    FVector2f F(FMath::Clamp(Mass*(Target-Velocity.X)/Response,-DriveLimit,DriveLimit),
-        -Mass*Velocity.Y/Response);
+    FVector2f F(FMath::Clamp(Mass*(Target-Velocity.X)/Response-External.X,-DriveLimit,DriveLimit),
+        -Mass*Velocity.Y/Response-External.Y);
     const float Budget=FMath::Max(0.f,Mu*Normal);
     if(F.Size()>Budget) F*=Budget/F.Size();
     return F;

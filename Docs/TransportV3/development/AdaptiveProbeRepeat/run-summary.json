@@ -1,0 +1,7 @@
+{
+  "name": "AdaptiveProbeRepeat",
+  "arguments": "\"${REPO}\\SandExcavator.uproject\" -game -d3d12 -sm6 -windowed -ResX=1280 -ResY=720 -unattended -nosound -SandRoadheader -SandRoadheaderTest -SandMaterial=DryCorotated -SandTestDuration=36 -log=TransportV3_AdaptiveProbeRepeat.log -SandRoadheader -SandMaterial=DryCorotated -SandHead=BucketWheel -SandWorkingLayout -SandLiftGuide -SandApproach -SandHeadHeightCm=16 -SandHeadPitch=-14 -SandDrumRPM=80 -SandSynchronous -SandDirectReaction -SandTraction -SandTractionCompensation -SandMachineMassKg=100 -SandDriveForceN=600 -SandGeometryAudit -SandCutTest -SandAdaptiveFeed",
+  "started_utc": "2026-09-13T11:29:20.1938319Z",
+  "binary_sha256": "1E972D3BB22DD104F4A0FE4FD566250173C5CC1C5795F8B0AC7AF06405099FC4",
+  "source_status": "Intermediate source tree not archived; runtime binary identifier and measurements only."
+}

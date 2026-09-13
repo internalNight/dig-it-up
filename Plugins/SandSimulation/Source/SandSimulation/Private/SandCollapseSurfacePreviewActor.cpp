@@ -148,7 +148,7 @@ void ASandCollapseSurfacePreviewActor::Tick(const float DeltaSeconds)
         return;
     }
 
-    constexpr float FixedFrameSeconds = 1.0f / 30.0f;
+    const float FixedFrameSeconds = Sand::MPM::CouplingStepSeconds();
     SimulationAccumulatorSeconds += DeltaSeconds * SimulationSpeed;
     if (SimulationAccumulatorSeconds < FixedFrameSeconds)
     {
@@ -280,18 +280,19 @@ void ASandCollapseSurfacePreviewActor::Tick(const float DeltaSeconds)
 
     // The GPU simulation stays at 30 Hz; CPU marching-cubes surface work is intentionally
     // limited to 10 Hz so a 16 GB machine cannot build up an unbounded mesh backlog.
-    const bool bRefreshSurface = (CompletedSimulationFrames / 3u) !=
-        ((CompletedSimulationFrames + FramesToAdvance) / 3u);
+    const uint32 SurfaceStride=FMath::RoundToInt(.1f/FixedFrameSeconds);
+    const bool bRefreshSurface = (CompletedSimulationFrames / SurfaceStride) !=
+        ((CompletedSimulationFrames + FramesToAdvance) / SurfaceStride);
     const TWeakObjectPtr<ASandCollapseSurfacePreviewActor> WeakThis(this);
     const TWeakObjectPtr<ASandExcavatorPawn> WeakExcavator = Excavator;
     const uint32 ActiveToolColliderCount = Tool.ColliderCount;
     const bool bBucketRetentionEnabled = Tool.bBucketInteriorEnabled;
     Sand::MPM::EnqueueRuntimeSimulationSteps(
         SimulationState.ToSharedRef(),
-        FMath::RoundToInt(1.0f/(30.0f*SimulationState->InternalDeltaSeconds)) * FramesToAdvance,
+        FMath::RoundToInt(FixedFrameSeconds/SimulationState->InternalDeltaSeconds) * FramesToAdvance,
         bRefreshSurface,
         Tool,
-        [WeakThis, WeakExcavator, FramesToAdvance, ActiveToolColliderCount,
+        [WeakThis, WeakExcavator, FramesToAdvance, FixedFrameSeconds, ActiveToolColliderCount,
             bBucketRetentionEnabled](
             TArray<Sand::MPM::FParticleData>&& Particles,
             const Sand::MPM::FToolInteractionResult& ToolInteraction,
@@ -304,7 +305,7 @@ void ASandCollapseSurfacePreviewActor::Tick(const float DeltaSeconds)
             WeakThis->bSimulationStepInFlight = false;
             WeakThis->CompletedSimulationFrames += FramesToAdvance;
             const bool bLogFrame = WeakThis->CompletedSimulationFrames == FramesToAdvance ||
-                WeakThis->CompletedSimulationFrames % 60 == 0;
+                WeakThis->CompletedSimulationFrames % FMath::RoundToInt(2.f/FixedFrameSeconds) == 0;
             int32 MovedParticleCount = -1;
             int32 BucketInteriorParticleCount = -1;
             int32 CarriedParticleCount = -1;
@@ -312,17 +313,30 @@ void ASandCollapseSurfacePreviewActor::Tick(const float DeltaSeconds)
 
             if (auto* Machine=Cast<ASandRoadheaderPawn>(WeakExcavator.Get()))
             {
-                Machine->CompletePhysicalStep(ToolInteraction,FramesToAdvance/30.0f,Particles);
+                Machine->CompletePhysicalStep(ToolInteraction,FramesToAdvance*FixedFrameSeconds,Particles);
             }
             if (WeakExcavator.IsValid() && WeakExcavator->ChassisBody->IsSimulatingPhysics())
             {
+                const bool Direct=FParse::Param(FCommandLine::Get(),TEXT("SandDirectReaction"));
+                if(Direct) {
+                    // Sum both grid and material-point contact impulses. The
+                    // legacy aggregate omitted the material-point correction.
+                    FVector J=FVector::ZeroVector;
+                    for(uint32 I=2;I<ActiveToolColliderCount;++I) J-=FVector(ToolInteraction.ColliderLinear[I]);
+                    const FVector Force=J/(FramesToAdvance*FixedFrameSeconds);
+                    WeakExcavator->SetAppliedContactForce(Force);
+                    // This mode requires a synchronous world step: force and
+                    // traction act over the same dt, with no reaction clipping.
+                    WeakExcavator->ChassisBody->AddForce(100*Force);
+                    if(bLogFrame) UE_LOG(LogTemp,Display,TEXT("CHASSIS_COUPLING rawFxN=%.3f rawFyN=%.3f rawFzN=%.3f filteredFxN=%.3f filteredFyN=%.3f filteredFzN=%.3f forceCapN=-1"),Force.X,Force.Y,Force.Z,Force.X,Force.Y,Force.Z);
+                } else {
                 // Equal and opposite bucket reaction. The raw grid contact can
                 // jump as individual 10 cm nodes enter a thin plate, so feed a
                 // filtered, acceleration-limited impulse to the much smaller
                 // Chaos chassis. Track reaction is handled by its suspension.
                 FVector ReactionImpulseMeters =
                     -FVector(ToolInteraction.SandLinearImpulseKgMetersPerSecond);
-                const float OuterStepSeconds = FramesToAdvance / 30.0f;
+                const float OuterStepSeconds = FramesToAdvance*FixedFrameSeconds;
                 const float MaximumImpulse =
                     WeakExcavator->ChassisBody->GetMass() * 1.25f * OuterStepSeconds;
                 ReactionImpulseMeters = ReactionImpulseMeters.GetClampedToMaxSize(MaximumImpulse);
@@ -349,6 +363,8 @@ void ASandCollapseSurfacePreviewActor::Tick(const float DeltaSeconds)
                         NAME_None,
                         false);
                 }
+            }
+
             }
 
             if (!Particles.IsEmpty())
@@ -408,7 +424,7 @@ void ASandCollapseSurfacePreviewActor::Tick(const float DeltaSeconds)
                     auto* Machine=Cast<ASandRoadheaderPawn>(WeakExcavator.Get());
                     if(!Machine || !Machine->IsConveyorRegion(Position)) Positions.Add(Position);
                     // A load above a track is not load-bearing terrain.
-                    if (Particle.BucketLocalAndCarried.W < 0.5f)
+                    if (Particle.BucketLocalAndCarried.W < 0.5f && (!Machine || !Machine->IsConveyorRegion(Position)))
                     {
                         SupportPositions.Add(Position);
                     }
@@ -420,11 +436,11 @@ void ASandCollapseSurfacePreviewActor::Tick(const float DeltaSeconds)
                 if (bLogFrame && FParse::Param(FCommandLine::Get(), TEXT("SandPitTest")))
                 {
                     UE_LOG(LogTemp, Display, TEXT("Pit retention: sim %.2f s, centre depth %.3f m, particles %d"),
-                        WeakThis->CompletedSimulationFrames / 30.0f, 2.0f - PitSurfaceZ, Particles.Num());
+                        WeakThis->CompletedSimulationFrames*FixedFrameSeconds, 2.0f - PitSurfaceZ, Particles.Num());
                 }
                 if (WeakExcavator.IsValid())
                 {
-                    WeakExcavator->UpdateSandSupportSurface(SupportPositions);
+                    WeakExcavator->UpdateSandSupportSurface(SupportPositions,FParse::Param(FCommandLine::Get(),TEXT("SandDirectReaction"))?50*WeakThis->SimulationState->CellSize:2.625f);
                 }
                 WeakThis->GenerateSurfaceFromParticlePositions(
                     MoveTemp(Positions),

@@ -131,8 +131,10 @@ void ASandHUD::DrawHUD()
             Margin, PanelY, 270.0f * UiScale, 212.0f * UiScale);
         if(Machine)
         {
-            if(FParse::Param(FCommandLine::Get(),TEXT("SandFeedControl")))
-                DrawText(FString::Printf(TEXT("Feed assist %.0f%% | Traction budget %.0f N | Target %.3f m/s"),100*Machine->GetFeedFraction(),Machine->GetTractionBudgetN(),Machine->GetDriveTargetMps()),
+            DrawText(FString::Printf(TEXT("In conveyor %.2f kg  |  Tail gate %.2f kg  |  Rear settled %.2f kg"),Machine->GetTroughMass(),Machine->GetTailCrossMass(),Machine->GetRearSettledMass()),
+                FLinearColor(.7f,1,.9f),Margin,Canvas->SizeY-90*UiScale,Font,UiScale);
+            if(FParse::Param(FCommandLine::Get(),TEXT("SandFeedControl")) || FParse::Param(FCommandLine::Get(),TEXT("SandAdaptiveFeed")))
+                DrawText(FString::Printf(TEXT("Depth %s | Feed %.0f%% | Traction %.0f N | Target %.3f m/s"),Machine->GetDepthStatus(),100*Machine->GetFeedFraction(),Machine->GetTractionBudgetN(),Machine->GetDriveTargetMps()),
                     FLinearColor(.6f,1,.8f),Margin,Canvas->SizeY-65*UiScale,Font,.9f*UiScale);
             DrawText(FString::Printf(TEXT("%s head  |  %.1f rpm  |  Chain %.2f m/s  |  Load %.1f / 240 Nm%s"),*Machine->GetHeadType(),Machine->GetDrumRPM(),Machine->GetConveyorSpeed(),Machine->GetLoadTorque(),FParse::Param(FCommandLine::Get(),TEXT("SandHeadInspect"))?TEXT("  |  CUTAWAY: casing contacts active"):TEXT("")),
                 FLinearColor(1,.8f,.3f),Margin,Canvas->SizeY-40*UiScale,Font,UiScale);
@@ -142,7 +144,7 @@ void ASandHUD::DrawHUD()
             TEXT("W / S       Drive forward / reverse"),
             TEXT("A / D       Steer left / right"),
             TEXT("SPACE       Brake"),
-            Machine ? TEXT("Q / E       Cutter raise / lower") : TEXT("Q / E       Boom up / down"),
+            Machine ? TEXT("Q/E  Raise/lower   R  Auto depth") : TEXT("Q / E       Boom up / down"),
             Machine ? TEXT("T / G       Motor on-off / reverse") : TEXT("R / F       Stick in / out"),
             Machine ? TEXT("C  View     P  Debug material points") : TEXT("T / G       Bucket curl / dump"),
             TEXT("H           Hide / show this help"),

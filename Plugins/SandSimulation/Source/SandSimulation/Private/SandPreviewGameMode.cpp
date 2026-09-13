@@ -8,6 +8,7 @@
 #include "Components/StaticMeshComponent.h"
 #include "Engine/DirectionalLight.h"
 #include "Engine/Engine.h"
+#include "EngineUtils.h"
 #include "Engine/ExponentialHeightFog.h"
 #include "Engine/PointLight.h"
 #include "Engine/SkyLight.h"
@@ -19,12 +20,14 @@
 #include "SandCollapseSurfacePreviewActor.h"
 #include "SandExcavatorPawn.h"
 #include "SandRoadheaderPawn.h"
+#include "SandMPMSolver.h"
 #include "SandHUD.h"
 #include "SandLevelSettings.h"
 #include "SandFloorExposure.h"
 #include "Misc/CommandLine.h"
 #include "Misc/Parse.h"
 #include "Misc/Paths.h"
+#include "Misc/App.h"
 #include "Containers/Ticker.h"
 #include "Engine/GameViewportClient.h"
 #include "Misc/AutomationTest.h"
@@ -51,6 +54,10 @@ void ASandPreviewGameMode::BeginPlay()
         GEngine->SetMaxFPS(60.0f);
     }
 
+    if(FParse::Param(FCommandLine::Get(),TEXT("SandSynchronous"))) {
+        bChangedFixedClock=true; bPreviousFixedClock=FApp::UseFixedTimeStep(); PreviousFixedDelta=FApp::GetFixedDeltaTime();
+        FApp::SetUseFixedTimeStep(true); FApp::SetFixedDeltaTime(Sand::MPM::CouplingStepSeconds());
+    }
     const float SandDepthCm = GetDefault<USandLevelSettings>()->SandDepthMeters * 100.0f;
     World->SpawnActor<ASandCollapseSurfacePreviewActor>(FVector::ZeroVector, FRotator::ZeroRotator);
 
@@ -181,6 +188,8 @@ void ASandPreviewGameMode::SelectVehicle(bool bRoadheader)
     Params.SpawnCollisionHandlingOverride=ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
     auto* Pawn=GetWorld()->SpawnActor<ASandExcavatorPawn>(bRoadheader?ASandRoadheaderPawn::StaticClass():ASandExcavatorPawn::StaticClass(),Position,FRotator::ZeroRotator,Params);
     if(!Pawn) return;
+    if(FParse::Param(FCommandLine::Get(),TEXT("SandSynchronous")))
+        for(TActorIterator<ASandCollapseSurfacePreviewActor> It(GetWorld());It;++It) Pawn->AddTickPrerequisiteActor(*It);
     PC->Possess(Pawn);
     PC->bShowMouseCursor=false;
     PC->SetInputMode(FInputModeGameOnly());
@@ -296,3 +305,9 @@ bool FSandFloorExposureTest::RunTest(const FString& Parameters)
     return true;
 }
 #endif
+
+void ASandPreviewGameMode::EndPlay(const EEndPlayReason::Type Reason)
+{
+    if(bChangedFixedClock) { FApp::SetUseFixedTimeStep(bPreviousFixedClock); FApp::SetFixedDeltaTime(PreviousFixedDelta); }
+    Super::EndPlay(Reason);
+}

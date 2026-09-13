@@ -1,0 +1,7 @@
+{
+  "name": "FinalChainOff",
+  "arguments": "\"${REPO}\\SandExcavator.uproject\" -game -d3d12 -sm6 -windowed -ResX=1280 -ResY=720 -unattended -nosound -SandRoadheader -SandRoadheaderTest -SandMaterial=DryCorotated -SandTestDuration=36 -log=TransportV3_FinalChainOff.log -SandRoadheader -SandMaterial=DryCorotated -SandHead=BucketWheel -SandWorkingLayout -SandLiftGuide -SandApproach -SandHeadHeightCm=16 -SandHeadPitch=-14 -SandDrumRPM=80 -SandSynchronous -SandDirectReaction -SandTraction -SandTractionCompensation -SandMachineMassKg=100 -SandDriveForceN=600 -SandGeometryAudit -SandCutTest -SandChainStopped",
+  "started_utc": "2026-09-13T11:21:37.3293526Z",
+  "binary_sha256": "41F9695524A2CB4409AA1AC0884128F2A580DCFDEADC5D959051B265D3E082EC",
+  "source_status": "Intermediate source tree not archived; runtime binary identifier and measurements only."
+}

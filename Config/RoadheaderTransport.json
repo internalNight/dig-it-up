@@ -1,0 +1,10 @@
+{
+  "description": "Physical bucket wheel and continuous belt research prototype; see Docs/TransportOptimization.md for validation boundaries.",
+  "flags": [
+    "-SandRoadheader", "-SandMaterial=DryCorotated", "-SandHead=BucketWheel",
+    "-SandWorkingLayout", "-SandLiftGuide", "-SandApproach", "-SandAdaptiveFeed", "-SandDenseSupport",
+    "-SandHeadHeightCm=16", "-SandHeadPitch=-14", "-SandDrumRPM=80",
+    "-SandSynchronous", "-SandDirectReaction", "-SandTraction", "-SandTractionCompensation",
+    "-SandMachineMassKg=100", "-SandDriveForceN=600", "-SandGeometryAudit"
+  ]
+}

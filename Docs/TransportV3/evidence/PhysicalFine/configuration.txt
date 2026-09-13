@@ -1,0 +1,5 @@
+SOIL_CONFIG phiDeg=35.000 cohesionPa=0.000 toolMu=0.500 dampingPerSec=0.150 dilationActive=1 dilationDeg=0.000
+TIME_GRID outerSeconds=0.016666668 internalSeconds=0.001111111 substeps=15
+MACHINE_MASS kg=100.00 driveLimitN=600.00
+HEAD_CONFIG type=BucketWheel pitchDeg=-14.00 mountHeightCm=16.00 fixedBench=0
+GEOMETRY_AUDIT independentPairsOver1mm=0

@@ -1,7 +1,9 @@
+#include "SandBearing.h"
 #include "SandMachineKinematics.h"
 #include "SandMPMSolver.h"
 #include "SandMachineDrive.h"
 #include "SandTraction.h"
+#include "SandMachineGeometry.h"
 #include "Misc/AutomationTest.h"
 
 #if WITH_DEV_AUTOMATION_TESTS
@@ -25,6 +27,14 @@ bool FSandTractionTest::RunTest(const FString&)
         (Slow+TractionForce(12,100,.6f,0,Slow,120,Dt)*Dt/12).Size()<.00001f);
     TestTrue(TEXT("Brake cannot hold beyond available friction impulse"),
         (Fast+TractionForce(12,10,.6f,0,Fast,120,Dt)*Dt/12).X>1.9f);
+    // At zero speed a finite static contact must balance a supportable
+    // external load. A velocity-only servo asks for zero and creeps forever.
+    const FVector2f Load(-35,12);
+    const FVector2f Hold=TractionForce(12,120,.6f,0,FVector2f::ZeroVector,120,.033f,Load);
+    TestTrue(TEXT("Static contact balances sustained load"),(Hold+Load).Size()<.0001f);
+    const FVector2f Overload(-100,0);
+    const FVector2f Limited=TractionForce(12,100,.6f,0,FVector2f::ZeroVector,120,.033f,Overload);
+    TestTrue(TEXT("Overload still slides"),(Limited+Overload).X< -39.9f);
     return true;
 }
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSandDriveLoadTest,"SandSimulation.Machine.DriveUnderLoad",
@@ -116,6 +126,72 @@ bool FSandGeneralRotorTest::RunTest(const FString&)
         const FVector3f VA=A.LinearVelocityMetersPerSecond+FVector3f::CrossProduct(A.AngularVelocityRadiansPerSecond,.04f*A.AxisX);
         TestTrue(TEXT("Surface point velocity matches spinning geometry"),((PB-PA)/.0001f-VA).Length()<.004f);
     }
+    return true;
+}
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSandAssemblySATTest,"SandSimulation.Machine.IndependentSolidClearance",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+bool FSandAssemblySATTest::RunTest(const FString&)
+{
+    Sand::MPM::FToolOrientedBoxState A,B;
+    A.HalfExtentsMeters=B.HalfExtentsMeters=FVector3f(.1f);
+    B.CenterMeters=FVector3f(.25f,0,0);
+    TestEqual(TEXT("Separated solids"),Sand::Machine::BoxOverlapDepth(A,B),0.f);
+    B.CenterMeters.X=.19f;
+    TestTrue(TEXT("Detect 10 mm interference"),FMath::IsNearlyEqual(Sand::Machine::BoxOverlapDepth(A,B),.01f,.0001f));
+    const FQuat4f Q(FVector3f(0,1,0),PI/4);
+    B.AxisX=Q.GetAxisX(); B.AxisZ=Q.GetAxisZ(); B.CenterMeters.X=.23f;
+    TestTrue(TEXT("Rotated corner interference"),Sand::Machine::BoxOverlapDepth(A,B)>.01f);
+    B.CenterMeters.X=.25f;
+    TestEqual(TEXT("Rotated corner clears"),Sand::Machine::BoxOverlapDepth(A,B),0.f);
+    return true;
+}
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSandBeltSkinTest,"SandSimulation.Machine.BeltSkinAndRaisedFlight",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+bool FSandBeltSkinTest::RunTest(const FString&)
+{
+    using namespace Sand::MPM;
+    FToolOrientedBoxState C; C.Motion=4; C.CenterMeters=FVector3f(.2f,0,.3f); C.Speed=-.3f;
+    const auto A=SampleMachineCollider(C,2);
+    TestTrue(TEXT("Endless belt envelope stays in place"),(A.CenterMeters-C.CenterMeters).IsNearlyZero());
+    TestTrue(TEXT("Belt skin has commanded contact velocity"),(A.LinearVelocityMetersPerSecond-FVector3f(-.3f,0,0)).IsNearlyZero());
+    C.Speed=0;
+    TestTrue(TEXT("Stopped belt cannot keep conveying by surface velocity"),SampleMachineCollider(C,2).LinearVelocityMetersPerSecond.IsNearlyZero());
+    C.Motion=2; C.Speed=.3f; C.Phase=Sand::Machine::Run+.03f; C.SurfaceOffset=.014f;
+    const auto P=SampleMachineCollider(C,.1f),Q=SampleMachineCollider(C,.1001f);
+    TestTrue(TEXT("Raised flight follows belt curvature with matching velocity"),((Q.CenterMeters-P.CenterMeters)/.0001f-P.LinearVelocityMetersPerSecond).Length()<.003f);
+    return true;
+}
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSandPhysicalClockTest,"SandSimulation.Machine.ExactCoupledSubsteps",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+bool FSandPhysicalClockTest::RunTest(const FString&)
+{
+    for(float Hz : {30.f,60.f,120.f}) for(float InnerHz : {600.f,900.f,1200.f}) {
+        const float Outer=1/Hz, Maximum=1/InnerHz;
+        const float Dt=Sand::MPM::FittedInternalStep(Outer,Maximum);
+        const int32 N=FMath::RoundToInt(Outer/Dt);
+        TestTrue(TEXT("Internal steps exactly span the rigid step"),FMath::Abs(N*Dt-Outer)<1.e-7f);
+        TestTrue(TEXT("Fitting cannot relax the stability step"),Dt<=Maximum+1.e-8f);
+    }
+    return true;
+}
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSandBearingEnvelopeTest,"SandSimulation.Machine.BearingRejectsAirborneSamples",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+bool FSandBearingEnvelopeTest::RunTest(const FString&)
+{
+    TArray<float> H;
+    for(int32 Z=0;Z<20;++Z) for(int32 I=0;I<10;++I) H.Add(2.5f+5*Z);
+    float Level=0;
+    TestTrue(TEXT("Connected bulk supports"),Sand::Machine::ConnectedBearingHeight(H,5,250,Level));
+    TestEqual(TEXT("Initial bulk surface"),Level,100.f);
+    H.Add(145); H.Add(150);
+    TestTrue(TEXT("Bulk still supports with airborne samples"),Sand::Machine::ConnectedBearingHeight(H,5,250,Level));
+    TestEqual(TEXT("Airborne samples cannot raise terrain"),Level,100.f);
+    for(int32 I=0;I<10;++I) H.Add(102.5f);
+    Sand::Machine::ConnectedBearingHeight(H,5,250,Level);
+    TestEqual(TEXT("Continuous deposition raises terrain"),Level,105.f);
+    H.RemoveAll([](float Z){return Z>=90;});
+    Sand::Machine::ConnectedBearingHeight(H,5,250,Level);
+    TestEqual(TEXT("Excavation lowers terrain"),Level,90.f);
     return true;
 }
 #endif

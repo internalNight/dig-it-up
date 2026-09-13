@@ -1,0 +1,7 @@
+{
+  "name": "DenseProbe",
+  "arguments": "\"${REPO}\\SandExcavator.uproject\" -game -d3d12 -sm6 -windowed -ResX=1280 -ResY=720 -unattended -nosound -SandRoadheader -SandRoadheaderTest -SandMaterial=DryCorotated -SandTestDuration=36 -log=TransportV3_DenseProbe.log -SandRoadheader -SandMaterial=DryCorotated -SandHead=BucketWheel -SandWorkingLayout -SandLiftGuide -SandApproach -SandHeadHeightCm=16 -SandHeadPitch=-14 -SandDrumRPM=80 -SandSynchronous -SandDirectReaction -SandTraction -SandTractionCompensation -SandMachineMassKg=100 -SandDriveForceN=600 -SandGeometryAudit -SandCutTest -SandAdaptiveFeed -SandDenseSupport",
+  "started_utc": "2026-09-13T11:32:57.1207369Z",
+  "binary_sha256": "AAC1FEFBEB89B58F4093CD2700010F226179B23029782C941A04D81E9AA9FBB0",
+  "source_status": "Intermediate source tree not archived; runtime binary identifier and measurements only."
+}

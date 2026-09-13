@@ -68,6 +68,24 @@ and earlier milestone measurements below describe the original 2 m prototype.
 
 The runtime plugin uses RDG compute passes and an APIC/MLS-MPM-style transfer with Drucker-Prager frictional plasticity. Chaos owns the excavator chassis; the GPU solver owns persistent sand state and returns aggregate impulses for two-way coupling.
 
+## Physical bucket-wheel transport prototype (2026-09-13)
+
+Use `PlayRoadheaderTransport.cmd` for the new source-built transport profile. It
+loads `Config/RoadheaderTransport.json`: a six-pocket wheel, continuous belt,
+finite drives, synchronized uncapped linear reaction, and load-aware depth/feed
+assistance. The older packaged preview launcher does not include these changes.
+
+Press **T** to start the motors, then **W** to feed into the level sand bed.
+**Q/E** takes manual control of lift; **R** restores depth assistance; **C** changes
+view and **P** shows the actual MPM samples. The HUD reports trough mass, actual
+tail crossing and rear deposition separately. The profile requires the locally
+built UE 5.8 Editor target; it is not a new portable package.
+
+See [the Chinese optimization and validation report](Docs/TransportOptimization.md)
+and [machine-readable acceptance](Docs/TransportV3/acceptance.json) for measured
+results and limitations. The support model and material remain uncalibrated;
+functional transport does not establish real-machine performance.
+
 ## Baseline target
 
 - Windows PC, DX12 and Shader Model 6

@@ -20,7 +20,7 @@ public:
     virtual void Tick(float DeltaSeconds) override;
 
     /** Refresh the four track support samples from the current full 3D MPM state. */
-    void UpdateSandSupportSurface(const TArray<FVector3f>& ParticlePositionsMeters);
+    void UpdateSandSupportSurface(const TArray<FVector3f>& ParticlePositionsMeters, float SurfaceRadiusCm=2.625f);
     void UpdateVisibleSandSupport(const TArray<FVector>& Vertices, const TArray<int32>& Indices);
 
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Excavator")
@@ -141,4 +141,5 @@ protected:
     float CurrentTerrainGradientMagnitude = 0.0f;
     FVector AppliedContactForce=FVector::ZeroVector;
     float TractionBudgetN=0,DriveTargetMps=0;
+    float BearingNormalN=0;
 };

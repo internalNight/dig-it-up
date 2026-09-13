@@ -1,0 +1,7 @@
+{
+  "name": "Rig80",
+  "arguments": "\"${REPO}\\SandExcavator.uproject\" -game -d3d12 -sm6 -windowed -ResX=1280 -ResY=720 -unattended -nosound -SandRoadheader -SandRoadheaderTest -SandMaterial=DryCorotated -SandTestDuration=36 -log=TransportV3_Rig80.log -SandFeedRig -SandHead=BucketWheel -SandHeadHeightCm=16 -SandHeadPitch=-14 -SandWorkingLayout -SandApproach -SandGeometryAudit -SandDrumRPM=80 -SandLiftGuide",
+  "started_utc": "2026-09-13T11:10:31.3994755Z",
+  "binary_sha256": "18310222542853D53766543FC311CE2B343F2C9682FE0E18CECB9FF2E93739EE",
+  "source_status": "Intermediate source tree not archived; runtime binary identifier and measurements only."
+}

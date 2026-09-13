@@ -1,0 +1,7 @@
+{
+  "name": "RigLow",
+  "arguments": "\"${REPO}\\SandExcavator.uproject\" -game -d3d12 -sm6 -windowed -ResX=1280 -ResY=720 -unattended -nosound -SandRoadheader -SandRoadheaderTest -SandMaterial=DryCorotated -SandTestDuration=24 -log=TransportV3_RigLow.log -SandFeedRig -SandHeadHeightCm=4 -SandHeadPitch=-8",
+  "started_utc": "2026-09-13T09:49:17.1671989Z",
+  "binary_sha256": "not recorded",
+  "source_status": "Intermediate source tree not archived; runtime binary identifier and measurements only."
+}

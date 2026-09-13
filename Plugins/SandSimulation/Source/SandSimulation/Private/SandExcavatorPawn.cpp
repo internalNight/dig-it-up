@@ -1,3 +1,4 @@
+#include "SandBearing.h"
 #include "SandExcavatorPawn.h"
 #include "SandTraction.h"
 #include "SandRoadheaderPawn.h"
@@ -393,17 +394,19 @@ void ASandExcavatorPawn::Tick(const float DeltaSeconds)
     const bool LimitedTraction=FParse::Param(FCommandLine::Get(),TEXT("SandTraction"));
     if(LimitedTraction) {
         const float Mass=ChassisBody->GetMass();
-        const float Normal=GroundedSupportCount>0?FMath::Max(0.f,Mass*9.81f-(float)AppliedContactForce.Z):0;
+        const float Normal=FParse::Param(FCommandLine::Get(),TEXT("SandDirectReaction"))?BearingNormalN:GroundedSupportCount>0?FMath::Max(0.f,Mass*9.81f-(float)AppliedContactForce.Z):0;
         float Mu=.6f; FParse::Value(FCommandLine::Get(),TEXT("SandTrackMu="),Mu);
         TractionBudgetN=FMath::Max(0.f,Mu*Normal);
         float Feed=1;
         if(const auto* Machine=Cast<ASandRoadheaderPawn>(this)) Feed=Machine->GetFeedFraction();
-        DriveTargetMps=bBrake?0:Throttle*.12f*Feed;
+        const auto* Roadheader=Cast<ASandRoadheaderPawn>(this);
+        DriveTargetMps=bBrake?0:Throttle*(Roadheader?Roadheader->GetTravelSpeedMps():.12f)*Feed;
         const FVector Right=FVector::CrossProduct(FVector::UpVector,HorizontalForward);
         const FVector V=ChassisBody->GetPhysicsLinearVelocity()/100;
         const FVector2f F=Sand::Machine::TractionForce(Mass,Normal,Mu,DriveTargetMps,
             FVector2f(FVector::DotProduct(V,HorizontalForward),FVector::DotProduct(V,Right)),DriveForce/100,
-            bBrake?FMath::Max(DeltaSeconds,.001f):.25f);
+            bBrake?FMath::Max(DeltaSeconds,.001f):.25f,
+            FParse::Param(FCommandLine::Get(),TEXT("SandTractionCompensation"))?FVector2f(FVector::DotProduct(AppliedContactForce,HorizontalForward),FVector::DotProduct(AppliedContactForce,Right)):FVector2f::ZeroVector);
         // Brake requests only the impulse needed to stop within this step.
         // The shared friction budget still caps it, so overload can slide.
         ChassisBody->AddForce(100*(HorizontalForward*F.X+Right*F.Y));
@@ -497,7 +500,7 @@ void ASandExcavatorPawn::UpdateVisualJoints()
 }
 
 void ASandExcavatorPawn::UpdateSandSupportSurface(
-    const TArray<FVector3f>& ParticlePositionsMeters)
+    const TArray<FVector3f>& ParticlePositionsMeters, float SurfaceRadiusCm)
 {
     if (ParticlePositionsMeters.IsEmpty())
     {
@@ -515,7 +518,7 @@ void ASandExcavatorPawn::UpdateSandSupportSurface(
     constexpr float QueryRadiusCentimeters = 10.5f;
     // The density isosurface lies below particle-centre + half-spacing.
     // Match it and allow a shallow tread indentation instead of a visible gap.
-    constexpr float ParticleSurfaceRadiusCentimeters = 2.625f;
+    const float ParticleSurfaceRadiusCentimeters = SurfaceRadiusCm;
     constexpr int32 TopParticleCount = 8;
     const float MaximumGroundHeight = ChassisBody->GetComponentLocation().Z + 22.0f;
     FVector SampleForward = GetActorForwardVector();
@@ -530,7 +533,8 @@ void ASandExcavatorPawn::UpdateSandSupportSurface(
     {
         const FVector SampleWorld = ChassisLocation +
             SampleForward * LocalSamplesCentimeters[SampleIndex].X +
-            SampleRight * LocalSamplesCentimeters[SampleIndex].Y;
+            SampleRight * (LocalSamplesCentimeters[SampleIndex].Y<0 ? LeftTrackCollider->GetRelativeLocation().Y : RightTrackCollider->GetRelativeLocation().Y);
+        TArray<float> ColumnHeights;
         TStaticArray<float, TopParticleCount> TopHeights;
         for (float& Height : TopHeights)
         {
@@ -546,6 +550,7 @@ void ASandExcavatorPawn::UpdateSandSupportSurface(
             if (DeltaX * DeltaX + DeltaY * DeltaY <= FMath::Square(QueryRadiusCentimeters) &&
                 ParticleZ <= MaximumGroundHeight)
             {
+                ColumnHeights.Add(ParticleZ);
                 if (ParticleZ > TopHeights[TopParticleCount - 1])
                 {
                     int32 InsertIndex = TopParticleCount - 1;
@@ -570,16 +575,26 @@ void ASandExcavatorPawn::UpdateSandSupportSurface(
             HeightSum += Height;
             ++ValidHeightCount;
         }
-        const float MeasuredHeight = ValidHeightCount > 0
+        float MeasuredHeight = ValidHeightCount > 0
             ? FMath::Max(0.0f, HeightSum / ValidHeightCount + ParticleSurfaceRadiusCentimeters)
             : 0.0f;
+        if(FParse::Param(FCommandLine::Get(),TEXT("SandDenseSupport"))) {
+            const bool HasBulk=Sand::Machine::ConnectedBearingHeight(ColumnHeights,2*SurfaceRadiusCm,PI*FMath::Square(QueryRadiusCentimeters),MeasuredHeight);
+            ValidHeightCount=HasBulk?TopParticleCount:0;
+        }
         ParticleSupportCeilingsCentimeters[SampleIndex] = MeasuredHeight + 1.0f;
+        if(FParse::Param(FCommandLine::Get(),TEXT("SandDirectReaction"))) {
+            // Rendering is not a bearing test: use the physical material samples.
+            bSandSupportSampleValid[SampleIndex]=ValidHeightCount>=4;
+            SandSupportHeightsCentimeters[SampleIndex]=FMath::Max(0.f,MeasuredHeight-.5f);
+        }
     }
 }
 
 void ASandExcavatorPawn::UpdateVisibleSandSupport(
     const TArray<FVector>& Vertices, const TArray<int32>& Indices)
 {
+    if(FParse::Param(FCommandLine::Get(),TEXT("SandDirectReaction"))) return;
     const FVector Origin = ChassisBody->GetComponentLocation();
     FVector Forward = GetActorForwardVector();
     Forward.Z = 0.0; Forward.Normalize();
@@ -587,7 +602,7 @@ void ASandExcavatorPawn::UpdateVisibleSandSupport(
     for (int32 SampleIndex = 0; SampleIndex < 4; ++SampleIndex)
     {
         const FVector Sample = Origin + Forward * (SampleIndex % 2 == 0 ? 15.0 : -15.0) +
-            Right * (SampleIndex < 2 ? -14.0 : 14.0);
+            Right * (SampleIndex < 2 ? LeftTrackCollider->GetRelativeLocation().Y : RightTrackCollider->GetRelativeLocation().Y);
         float Height;
         const float Ceiling = FMath::Min(
             ParticleSupportCeilingsCentimeters[SampleIndex], static_cast<float>(Origin.Z + 22.0));
@@ -626,6 +641,7 @@ void ASandExcavatorPawn::ApplySandSuspension(
     }
     const FVector HorizontalRight = FVector::CrossProduct(FVector::UpVector, HorizontalForward);
 
+    BearingNormalN=0;
     GroundedSupportCount = 0;
     CurrentTerrainGradientMagnitude = 0.0f;
     float SupportedHeightSum = 0.0f;
@@ -648,10 +664,15 @@ void ASandExcavatorPawn::ApplySandSuspension(
         const float HeightError = DesiredChassisHeight - ChassisBody->GetComponentLocation().Z;
         const float VerticalVelocity = ChassisBody->GetPhysicsLinearVelocity().Z;
         const float VehicleWeight = ChassisBody->GetMass() * 980.0f;
+        const bool Direct=FParse::Param(FCommandLine::Get(),TEXT("SandDirectReaction"));
+        // Research bearing spring: E*A/L = 250 kPa * (2*.42*.055) / .25 m.
+        // It supplies compression only; no mg preload can lift an unloaded track.
+        const float K=Direct?46200.f:SuspensionStiffness;
+        const float C=Direct?1.6f*FMath::Sqrt(K*ChassisBody->GetMass()):SuspensionDamping;
         const float TotalSupportForce = FMath::Clamp(
-            VehicleWeight + SuspensionStiffness * HeightError - SuspensionDamping * VerticalVelocity,
-            0.0f,
-            MaximumSupportForce);
+            (Direct?0.f:VehicleWeight)+K*HeightError-C*VerticalVelocity,
+            0.0f,Direct?3*VehicleWeight:MaximumSupportForce);
+        BearingNormalN=TotalSupportForce/100;
         ChassisBody->AddForce(FVector::UpVector * TotalSupportForce, NAME_None, false);
 
         FVector TerrainGradient = FVector::ZeroVector;
@@ -667,7 +688,7 @@ void ASandExcavatorPawn::ApplySandSuspension(
                 SandSupportHeightsCentimeters[2] + SandSupportHeightsCentimeters[3]);
             FVector LocalGradient(
                 (FrontHeight - RearHeight) / 30.0f,
-                (RightHeight - LeftHeight) / 28.0f,
+                (RightHeight - LeftHeight) / (RightTrackCollider->GetRelativeLocation().Y-LeftTrackCollider->GetRelativeLocation().Y),
                 0.0f);
             LocalGradient = LocalGradient.GetClampedToMaxSize(MaximumTerrainSlope);
             constexpr float FlatGroundGradientDeadZone = 0.045f;
