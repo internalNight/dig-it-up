@@ -28,9 +28,23 @@ void ASandCollapseSurfacePreviewActor::BeginPlay()
 {
     Super::BeginPlay();
 
-    const FSandMaterialParameters Material =
+    FSandMaterialParameters Material =
         FParse::Param(FCommandLine::Get(), TEXT("SandLooseBaseline"))
         ? FSandMaterialParameters() : RuntimeMaterial;
+    // Independent sensitivity controls. These are not calibrated soil presets.
+    FParse::Value(FCommandLine::Get(),TEXT("SandPhi="),Material.InternalFrictionAngleDegrees);
+    FParse::Value(FCommandLine::Get(),TEXT("SandCohesionPa="),Material.CohesionPa);
+    FParse::Value(FCommandLine::Get(),TEXT("SandToolMu="),Material.ToolFrictionCoefficient);
+    FParse::Value(FCommandLine::Get(),TEXT("SandDamping="),Material.VelocityDampingPerSecond);
+    FString MaterialError;
+    if(!FMath::IsFinite(Material.InternalFrictionAngleDegrees) || !FMath::IsFinite(Material.CohesionPa) ||
+        !FMath::IsFinite(Material.ToolFrictionCoefficient) || !FMath::IsFinite(Material.VelocityDampingPerSecond) || !Material.IsValid(&MaterialError))
+    {
+        UE_LOG(LogTemp,Fatal,TEXT("Invalid sand sensitivity parameters: %s"),*MaterialError);
+        return;
+    }
+    UE_LOG(LogTemp,Display,TEXT("SOIL_CONFIG phiDeg=%.3f cohesionPa=%.3f toolMu=%.3f dampingPerSec=%.3f dilationActive=0"),
+        Material.InternalFrictionAngleDegrees,Material.CohesionPa,Material.ToolFrictionCoefficient,Material.VelocityDampingPerSecond);
     SimulationState = Sand::MPM::CreateRuntimeSandboxSimulation(Material);
     // Acceptance fixture: a sloping corner excavation with two intact bottom layers.
     // Removed material is stacked in the upper air region, conserving mass.
@@ -234,7 +248,7 @@ void ASandCollapseSurfacePreviewActor::Tick(const float DeltaSeconds)
         // never reach its release threshold at the mechanical stop, leaving the
         // captured load attached indefinitely.
         const bool bFullDump = Excavator->GetBucketAngleDegrees() <= -155.0f;
-        Tool.bBucketInteriorEnabled = !bFullDump;
+        Tool.bBucketInteriorEnabled = !bFullDump && !FParse::Param(FCommandLine::Get(),TEXT("SandDisableBucketCarry"));
         const float OpeningUpwardComponent = FVector::DotProduct(
             BucketTransform.GetUnitAxis(EAxis::Z), FVector::UpVector);
         const float RetentionBlend = FMath::Clamp(
@@ -308,6 +322,13 @@ void ASandCollapseSurfacePreviewActor::Tick(const float DeltaSeconds)
                     WeakThis->SmoothedBucketReactionImpulseMeters,
                     ReactionImpulseMeters,
                     0.24f);
+                if(bLogFrame)
+                {
+                    const FVector RawForce=-FVector(ToolInteraction.SandLinearImpulseKgMetersPerSecond)/OuterStepSeconds;
+                    const FVector AppliedForce=WeakThis->SmoothedBucketReactionImpulseMeters/OuterStepSeconds;
+                    UE_LOG(LogTemp,Display,TEXT("CHASSIS_COUPLING rawFxN=%.3f rawFyN=%.3f rawFzN=%.3f filteredFxN=%.3f filteredFyN=%.3f filteredFzN=%.3f forceCapN=%.3f"),
+                        RawForce.X,RawForce.Y,RawForce.Z,AppliedForce.X,AppliedForce.Y,AppliedForce.Z,MaximumImpulse/OuterStepSeconds);
+                }
                 if (!WeakThis->SmoothedBucketReactionImpulseMeters.IsNearlyZero(0.005f))
                 {
                     WeakExcavator->ChassisBody->AddImpulse(

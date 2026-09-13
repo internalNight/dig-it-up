@@ -21,6 +21,7 @@ public:
     float GetDrumRPM() const { return DrumOmega * 60.0f / (2.0f*PI); }
     float GetConveyorSpeed() const { return ChainSpeed; }
     float GetLoadTorque() const { return DrumLoad; }
+    const FString& GetHeadType() const { return HeadType; }
     bool IsConveyorRegion(const FVector3f& Position) const;
     bool IsDebugPoints() const { return bDebugPoints; }
     bool IsCutAcceptance() const { return bCutTest; }
@@ -41,6 +42,10 @@ private:
     float DrumLoad = 0;
     float ChainLoad = 0;
     float HeadPitch = 0;
+    // Geometric screening prototypes, not calibrated replicas of vendor machines.
+    FString HeadType = TEXT("Paddle");
+    bool bPresetPitch = false;
+    FVector InitialChassisLocation = FVector::ZeroVector;
     float Direction = 1;
     float PhysicalTime = 0;
     float NextReport = 0;

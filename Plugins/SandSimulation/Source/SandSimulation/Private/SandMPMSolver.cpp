@@ -347,7 +347,17 @@ FToolOrientedBoxState SampleMachineCollider(const FToolOrientedBoxState& C, floa
     auto R=C;
     if (C.Motion==0) { R.CenterMeters += C.LinearVelocityMetersPerSecond*Time; return R; }
     FVector3f P, X, Y(0,1,0), Z;
-    if(C.Motion==1)
+    if(C.Motion==3)
+    {
+        const FQuat4f Spin(C.RotorAxis,C.Phase+C.Speed*Time);
+        const FVector3f Offset=Spin.RotateVector(C.RotorOffset);
+        const FQuat4f Orientation=Spin*C.RotorOrientation;
+        P=C.RotorCenter+Offset;
+        X=Orientation.GetAxisX(); Y=Orientation.GetAxisY(); Z=Orientation.GetAxisZ();
+        R.AngularVelocityRadiansPerSecond=C.MotionRotation.RotateVector(C.RotorAxis*C.Speed);
+        R.LinearVelocityMetersPerSecond=C.MotionRotation.RotateVector(FVector3f::CrossProduct(C.RotorAxis*C.Speed,Offset));
+    }
+    else if(C.Motion==1)
     {
         const float A=C.Phase+C.Speed*Time;
         X=FVector3f(FMath::Cos(A),0,-FMath::Sin(A));

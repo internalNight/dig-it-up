@@ -63,6 +63,14 @@ void ASandRoadheaderPawn::BeginPlay()
     bDebugPoints=FParse::Param(FCommandLine::Get(),TEXT("SandDebugPoints"));
     bChainStopped=FParse::Param(FCommandLine::Get(),TEXT("SandChainStopped"));
     bCutTest=bAutoTest && FParse::Param(FCommandLine::Get(),TEXT("SandCutTest"));
+    FParse::Value(FCommandLine::Get(),TEXT("SandHead="),HeadType);
+    if(HeadType!=TEXT("Paddle") && HeadType!=TEXT("Chevron") && HeadType!=TEXT("Spoke") && HeadType!=TEXT("Helix"))
+    {
+        UE_LOG(LogTemp,Warning,TEXT("Unknown SandHead; using Paddle")); HeadType=TEXT("Paddle");
+    }
+    bPresetPitch=FParse::Value(FCommandLine::Get(),TEXT("SandHeadPitch="),HeadPitch);
+    HeadPitch=FMath::Clamp(HeadPitch,-25.0f,18.0f);
+    InitialChassisLocation=ChassisBody->GetComponentLocation();
     ConveyorSurface=GetWorld()->SpawnActorDeferred<ASandSurfacePreviewActor>(ASandSurfacePreviewActor::StaticClass(),FTransform::Identity,this);
     ConveyorSurface->bBuildOnBeginPlay=false;
     ConveyorSurface->bAllowAutomaticCapture=false;
@@ -84,6 +92,11 @@ void ASandRoadheaderPawn::BeginPlay()
         ChassisBody->SetSimulatePhysics(false);
         ChassisBody->SetCollisionEnabled(ECollisionEnabled::NoCollision);
     }
+    float HeightCm=ToolMount->GetRelativeLocation().Z;
+    FParse::Value(FCommandLine::Get(),TEXT("SandHeadHeightCm="),HeightCm);
+    ToolMount->SetRelativeLocation(FVector(0,0,FMath::Clamp(HeightCm,-10.0f,50.0f)));
+    ToolMount->SetRelativeRotation(FRotator(HeadPitch,0,0));
+    UE_LOG(LogTemp,Display,TEXT("HEAD_CONFIG type=%s pitchDeg=%.2f mountHeightCm=%.2f fixedBench=%d"),*HeadType,HeadPitch,HeightCm,bBench);
     if(bBench)
     {
         Sand::MPM::FToolColliderState T; BuildPhysicalTool(T,0);
@@ -106,6 +119,14 @@ void ASandRoadheaderPawn::BeginPlay()
         CameraBoom->SetRelativeLocation(FVector(-65,0,43));
         CameraBoom->SetRelativeRotation(FRotator(-16,0,0));
         FollowCamera->FieldOfView=78;
+    }
+    if(FParse::Param(FCommandLine::Get(),TEXT("SandHeadInspect")))
+    {
+        CameraBoom->bDoCollisionTest=false;
+        CameraBoom->bEnableCameraLag=false;
+        CameraBoom->TargetArmLength=210;
+        CameraBoom->SetRelativeLocation(FVector(35,0,15));
+        CameraBoom->SetRelativeRotation(FRotator(-22,135,0));
     }
     UpdateMachineVisuals();
 }
@@ -137,7 +158,7 @@ void ASandRoadheaderPawn::Tick(float Dt)
     {
         const float Input=(PC->IsInputKeyDown(EKeys::Q)?1.0f:0.0f)-(PC->IsInputKeyDown(EKeys::E)?1.0f:0.0f);
         HeadPitch=FMath::Clamp(HeadPitch+Input*Dt*12,-25.0f,18.0f);
-        if(bCutTest)
+        if(bCutTest && !bPresetPitch)
             HeadPitch=-FMath::Min(15.0f,PhysicalTime*4.0f);
         ToolMount->SetRelativeRotation(FRotator(HeadPitch,0,0));
     }
@@ -170,13 +191,48 @@ void ASandRoadheaderPawn::BuildPhysicalTool(Sand::MPM::FToolColliderState& Tool,
     Box(FVector3f(-.15f,0,0),FVector3f(.47f,.22f,.015f));
     Box(FVector3f(-.15f,-.235f,.065f),FVector3f(.47f,.015f,.08f));
     Box(FVector3f(-.15f,.235f,.065f),FVector3f(.47f,.015f,.08f));
-    Box(FVector3f(.51f,0,.01f),FVector3f(.10f,.23f,.10f));
-    Box(FVector3f(.51f,0,.01f),FVector3f(.07f,.255f,.07f));
+    const bool Axial=HeadType==TEXT("Spoke") || HeadType==TEXT("Helix");
+    Box(FVector3f(.51f,0,.01f),Axial?FVector3f(.18f,.035f,.035f):FVector3f(.10f,.23f,.10f));
+    Box(FVector3f(.51f,0,.01f),Axial?FVector3f(.16f,.04f,.04f):FVector3f(.07f,.255f,.07f));
     for(int32 I=0;I<DrumCount;++I)
     {
         auto& C=Tool.AddCollider(); C.Motion=1; C.MotionOrigin=Origin; C.MotionRotation=Rotation;
         C.Phase=DrumAngle+I*2*PI/DrumCount; C.Speed=-DrumOmega;
         C.HalfExtentsMeters=FVector3f(.055f,.23f,.022f);
+        if(HeadType!=TEXT("Paddle"))
+        {
+            C.Motion=3; C.Phase=DrumAngle;
+            if(HeadType==TEXT("Chevron"))
+            {
+                // Four staggered pairs of short, oppositely skewed paddles.
+                const float Side=I%2 ? 1.0f:-1.0f;
+                const float A=(I/2)*2*PI/4+Side*.20f;
+                const FQuat4f Around(FVector3f(0,1,0),A);
+                C.RotorOffset=Around.RotateVector(FVector3f(.145f,Side*.115f,0));
+                C.RotorOrientation=Around*FQuat4f(FVector3f(1,0,0),Side*.40f);
+                C.HalfExtentsMeters=FVector3f(.055f,.10f,.022f);
+            }
+            else
+            {
+                C.RotorAxis=FVector3f(1,0,0);
+                const float A=I*2*PI/DrumCount;
+                const FQuat4f Around(C.RotorAxis,A);
+                if(HeadType==TEXT("Spoke"))
+                {
+                    C.RotorOffset=Around.RotateVector(FVector3f(0,.125f,0));
+                    C.RotorOrientation=Around;
+                    C.HalfExtentsMeters=FVector3f(.025f,.09f,.025f);
+                }
+                else
+                {
+                    // One turn assembled from inclined plates; deliberately
+                    // labelled segmented helix, not a continuous auger flight.
+                    C.RotorOffset=Around.RotateVector(FVector3f(-.14f+I*.04f,.12f,0));
+                    C.RotorOrientation=Around*FQuat4f(FVector3f(0,1,0),-.45f);
+                    C.HalfExtentsMeters=FVector3f(.025f,.085f,.055f);
+                }
+            }
+        }
         C=SampleMachineCollider(C,Seconds);
     }
     for(int32 I=0;I<BladeCount;++I)
@@ -230,6 +286,10 @@ void ASandRoadheaderPawn::UpdateMachineVisuals()
         const FVector X(C.AxisX),Y(C.AxisY),Z(C.AxisZ);
         M.SetAxes(&X,&Y,&Z);
         auto* V=MachineVisuals[I-2].Get();
+        // Explicit cutaway inspection: hide casing and feeder visuals only.
+        // Their contact geometry remains active; never use this as an open-case test.
+        const bool Cutaway=FParse::Param(FCommandLine::Get(),TEXT("SandHeadInspect"));
+        V->SetVisibility(!(Cutaway && I>=25));
         V->SetWorldLocationAndRotation(FVector(C.CenterMeters)*100,FQuat(M));
         V->SetWorldScale3D(FVector(C.HalfExtentsMeters)*2);
     }
@@ -246,7 +306,7 @@ void ASandRoadheaderPawn::CompletePhysicalStep(const Sand::MPM::FToolInteraction
 {
     Sand::MPM::FToolColliderState T; BuildPhysicalTool(T,Dt*0.5f);
     const FVector3f DrumCenter(ToolMount->GetComponentTransform().TransformPosition(FVector(51,0,1))/100.0);
-    const FVector3f Axis(ToolMount->GetRightVector());
+    const FVector3f Axis((HeadType==TEXT("Spoke") || HeadType==TEXT("Helix"))?ToolMount->GetForwardVector():ToolMount->GetRightVector());
     float DrumImpulse=0, ChainImpulse=0;
     for(int32 I=7;I<7+DrumCount;++I)
     {
@@ -330,6 +390,13 @@ void ASandRoadheaderPawn::CompletePhysicalStep(const Sand::MPM::FToolInteraction
             if(Local.X < -65) RearMass+=P.PositionAndMass.W;
         }
         if(InitialMass<0) InitialMass=Mass;
+        FVector3f HeadImpulse=FVector3f::ZeroVector;
+        for(int32 I=7;I<7+DrumCount;++I) HeadImpulse+=R.ColliderLinear[I];
+        const FVector Reaction=FVector(-HeadImpulse)/FMath::Max(Dt,1.e-6f);
+        const FVector Velocity=ChassisBody->GetPhysicsLinearVelocity()/100.0;
+        UE_LOG(LogTemp,Display,TEXT("HEAD_DIAGNOSTIC type=%s t=%.2f pitchDeg=%.2f rotorFxN=%.3f rotorFyN=%.3f rotorFzN=%.3f chassisSpeedMps=%.4f displacementM=%.4f fixedBench=%d"),
+            *HeadType,PhysicalTime,HeadPitch,Reaction.X,Reaction.Y,Reaction.Z,Velocity.Size(),
+            FVector::Dist(ChassisBody->GetComponentLocation(),InitialChassisLocation)/100.0,bBench);
         UE_LOG(LogTemp,Display,TEXT("ROADHEADER t=%.2f rpm=%.2f chain=%.3f torque=%.2f mass=%.6f massError=%.9f rearMass=%.6f delivered=%.6f nonfinite=%d carried=%d"),
             PhysicalTime,GetDrumRPM(),ChainSpeed,DrumLoad,Mass,Mass-InitialMass,RearMass,DeliveredMass,NonFinite,Carried);
         if(bAutoTest && PhysicalTime>=16)

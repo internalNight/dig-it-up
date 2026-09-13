@@ -70,4 +70,29 @@ bool FSandRotorMotionTest::RunTest(const FString&)
     TestTrue(TEXT("Stopped rotor has zero prescribed velocity"),Stopped.LinearVelocityMetersPerSecond.IsNearlyZero());
     return true;
 }
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSandGeneralRotorTest,"SandSimulation.Machine.ArbitraryRotorVelocity",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+bool FSandGeneralRotorTest::RunTest(const FString&)
+{
+    for(const FVector3f Axis : {FVector3f(1,0,0),FVector3f(0,1,0)})
+    for(float Speed : {-1.8f,0.0f,1.8f})
+    {
+        Sand::MPM::FToolOrientedBoxState C;
+        C.Motion=3; C.RotorAxis=Axis; C.Speed=Speed; C.Phase=.3f;
+        C.RotorOffset=FVector3f(.08f,.12f,.03f);
+        C.RotorOrientation=FQuat4f(FVector3f(0,0,1),.4f);
+        C.MotionRotation=FQuat4f(FVector3f(0,1,0),.2f);
+        C.BaseVelocity=FVector3f(.05f,0,0);
+        const auto A=Sand::MPM::SampleMachineCollider(C,.2f);
+        const auto B=Sand::MPM::SampleMachineCollider(C,.2001f);
+        TestTrue(TEXT("Rotor translation derivative matches contact velocity"),
+            ((B.CenterMeters-A.CenterMeters)/.0001f-A.LinearVelocityMetersPerSecond).Length()<.003f);
+        // A surface point must also include angular velocity, not just orbit velocity.
+        const FVector3f PA=A.CenterMeters+.04f*A.AxisX;
+        const FVector3f PB=B.CenterMeters+.04f*B.AxisX;
+        const FVector3f VA=A.LinearVelocityMetersPerSecond+FVector3f::CrossProduct(A.AngularVelocityRadiansPerSecond,.04f*A.AxisX);
+        TestTrue(TEXT("Surface point velocity matches spinning geometry"),((PB-PA)/.0001f-VA).Length()<.004f);
+    }
+    return true;
+}
 #endif

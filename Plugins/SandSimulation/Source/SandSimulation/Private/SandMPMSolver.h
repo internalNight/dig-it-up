@@ -151,7 +151,11 @@ struct FToolOrientedBoxState
 {
     // Optional analytic machine motion evaluated at each MPM substep.
     FVector3f BaseVelocity = FVector3f::ZeroVector;
-    uint8 Motion = 0; // 0 static sample, 1 drum rotor, 2 closed-loop chain
+    uint8 Motion = 0; // 0 static sample, 1 drum rotor, 2 chain, 3 arbitrary-axis rotor
+    FVector3f RotorAxis = FVector3f(0,1,0);
+    FVector3f RotorCenter = FVector3f(.51f,0,.01f);
+    FVector3f RotorOffset = FVector3f::ZeroVector;
+    FQuat4f RotorOrientation = FQuat4f::Identity;
     FVector3f MotionOrigin = FVector3f::ZeroVector;
     FQuat4f MotionRotation = FQuat4f::Identity;
     float SeparationSpeedLimit = 2.0f;

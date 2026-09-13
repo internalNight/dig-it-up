@@ -120,7 +120,7 @@ void ASandHUD::DrawHUD()
             Margin, PanelY, 270.0f * UiScale, 212.0f * UiScale);
         if(Machine)
         {
-            DrawText(FString::Printf(TEXT("Drum %.1f rpm  |  Chain %.2f m/s  |  Load %.1f / 240 Nm"),Machine->GetDrumRPM(),Machine->GetConveyorSpeed(),Machine->GetLoadTorque()),
+            DrawText(FString::Printf(TEXT("%s head  |  %.1f rpm  |  Chain %.2f m/s  |  Load %.1f / 240 Nm%s"),*Machine->GetHeadType(),Machine->GetDrumRPM(),Machine->GetConveyorSpeed(),Machine->GetLoadTorque(),FParse::Param(FCommandLine::Get(),TEXT("SandHeadInspect"))?TEXT("  |  CUTAWAY: casing contacts active"):TEXT("")),
                 FLinearColor(1,.8f,.3f),Margin,Canvas->SizeY-40*UiScale,Font,UiScale);
         }
         const TCHAR* Lines[] =
