@@ -32,7 +32,9 @@ public:
     double GetTailCrossMass() const { return TailCrossMass; }
     const TCHAR* GetDepthStatus() const { return !bAdaptiveFeed?TEXT("OFF"):!bApproach?TEXT("MANUAL"):bDepthRelief?TEXT("LIFTING"):TEXT("AUTO"); }
     double GetRearSettledMass() const { return RearSettledMass; }
-    float GetTravelSpeedMps() const { return bWorkingLayout?.03f:.12f; }
+    // Acceptance tests retain the controlled 3 cm/s feed. Interactive driving
+    // needs a visible manoeuvring speed while remaining inside finite traction.
+    float GetTravelSpeedMps() const { return bCutTest?.03f:bWorkingLayout?.08f:.12f; }
     double GetTroughMass() const { return TroughMass; }
 protected:
     virtual void BeginPlay() override;

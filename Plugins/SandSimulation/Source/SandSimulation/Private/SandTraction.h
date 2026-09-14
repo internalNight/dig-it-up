@@ -15,4 +15,9 @@ inline FVector2f TractionForce(float Mass,float Normal,float Mu,float Target,
 inline float FeedFraction(float Draft,float Torque) {
     return FMath::Clamp(FMath::Min((65-FMath::Abs(Draft))/40.f,(180-FMath::Abs(Torque))/100.f),0.f,1.f);
 }
+// Automatic cutting relief may pause forward penetration, but it must never
+// remove the operator's ability to back the machine out of the cut.
+inline float DriveFeedFraction(float Throttle,float ForwardFeedFraction) {
+    return Throttle<0.f?1.f:FMath::Clamp(ForwardFeedFraction,0.f,1.f);
+}
 }

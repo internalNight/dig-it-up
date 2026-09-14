@@ -21,6 +21,8 @@ bool FSandTractionTest::RunTest(const FString&)
     }
     TestEqual(TEXT("Severe draft removes positive feed"),FeedFraction(80,0),0.f);
     TestEqual(TEXT("No-load feed is available"),FeedFraction(0,0),1.f);
+    TestEqual(TEXT("Overload pauses manual forward penetration"),DriveFeedFraction(1.f,0.f),0.f);
+    TestEqual(TEXT("Reverse remains available during overload relief"),DriveFeedFraction(-1.f,0.f),1.f);
     const float Dt=1.f/60;
     const FVector2f Slow(.005f,.002f),Fast(2.f,0);
     TestTrue(TEXT("Finite brake stops a supportable velocity within one step"),

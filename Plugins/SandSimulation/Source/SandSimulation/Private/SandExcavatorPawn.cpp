@@ -401,7 +401,8 @@ void ASandExcavatorPawn::Tick(const float DeltaSeconds)
         float Mu=.6f; FParse::Value(FCommandLine::Get(),TEXT("SandTrackMu="),Mu);
         TractionBudgetN=FMath::Max(0.f,Mu*Normal);
         float Feed=1;
-        if(const auto* Machine=Cast<ASandRoadheaderPawn>(this)) Feed=Machine->GetFeedFraction();
+        if(const auto* Machine=Cast<ASandRoadheaderPawn>(this))
+            Feed=Sand::Machine::DriveFeedFraction(Throttle,Machine->GetFeedFraction());
         const auto* Roadheader=Cast<ASandRoadheaderPawn>(this);
         DriveTargetMps=bBrake?0:Throttle*(Roadheader?Roadheader->GetTravelSpeedMps():.12f)*Feed;
         const FVector Right=FVector::CrossProduct(FVector::UpVector,HorizontalForward);
