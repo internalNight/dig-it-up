@@ -74,7 +74,10 @@ private:
     float DepthRampM=.48f;
     float ApproachSpeedCmPerS=1.5f;
     float HelixFriction=.25f;
+    float ChainDriveGain=1000.f, ChainForceLimitN=500.f;
     float ReliefOnLoad=.85f, ReliefOffLoad=.55f;
+    float ReliefOnDelayS=.25f, ReliefOffDelayS=.20f;
+    float ReliefRequestSeconds=0, ReliefClearSeconds=0;
     float ConveyorLoop() const;
     float RigStart() const { return bApproach?9.f:2.f; }
     float RigSpeed = .03f;
@@ -91,11 +94,14 @@ private:
     double RotorMass=0, TroughMass=0, SideLossMass=0;
     double DeliveredMass=0, TailCrossMass=0, RearSettledMass=0;
     bool bDebugPoints = false;
+    bool bOpenTop = false;
     bool bChainStopped = false;
     bool bCutTest = false;
     bool bHoldTest = false;
     bool bRunning = false;
     bool bInternalCamera = false;
+    float ExternalCameraPitch = -32.f;
+    float ExternalCameraYaw = -55.f;
     bool bBench = false;
     bool bAutoTest = false;
     bool bStopTest = false;

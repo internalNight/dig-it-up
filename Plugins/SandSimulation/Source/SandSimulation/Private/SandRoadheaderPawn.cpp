@@ -69,6 +69,7 @@ void ASandRoadheaderPawn::BeginPlay()
 {
     Super::BeginPlay();
     bWorkingLayout=FParse::Param(FCommandLine::Get(),TEXT("SandWorkingLayout"));
+    bOpenTop=FParse::Param(FCommandLine::Get(),TEXT("SandOpenTop"));
     FParse::Value(FCommandLine::Get(),TEXT("SandHead="),HeadType);
     if(bWorkingLayout) StartHeightCm=30;
     if(FParse::Param(FCommandLine::Get(),TEXT("SandDirectReaction")) && !FParse::Param(FCommandLine::Get(),TEXT("SandSynchronous")))
@@ -130,11 +131,19 @@ void ASandRoadheaderPawn::BeginPlay()
     FParse::Value(FCommandLine::Get(),TEXT("SandBladeDepth="),BladeDepth);
     FParse::Value(FCommandLine::Get(),TEXT("SandBladeSpeed="),BladeSpeed);
     FParse::Value(FCommandLine::Get(),TEXT("SandHelixFriction="),HelixFriction);
+    FParse::Value(FCommandLine::Get(),TEXT("SandChainDriveGain="),ChainDriveGain);
+    FParse::Value(FCommandLine::Get(),TEXT("SandChainForceLimitN="),ChainForceLimitN);
     FParse::Value(FCommandLine::Get(),TEXT("SandReliefOn="),ReliefOnLoad);
     FParse::Value(FCommandLine::Get(),TEXT("SandReliefOff="),ReliefOffLoad);
+    FParse::Value(FCommandLine::Get(),TEXT("SandReliefOnDelayS="),ReliefOnDelayS);
+    FParse::Value(FCommandLine::Get(),TEXT("SandReliefOffDelayS="),ReliefOffDelayS);
     HelixFriction=FMath::Clamp(HelixFriction,0.f,1.5f);
+    ChainDriveGain=FMath::Clamp(ChainDriveGain,100.f,5000.f);
+    ChainForceLimitN=FMath::Clamp(ChainForceLimitN,50.f,2000.f);
     ReliefOnLoad=FMath::Clamp(ReliefOnLoad,.5f,2.f);
     ReliefOffLoad=FMath::Clamp(ReliefOffLoad,.1f,ReliefOnLoad-.05f);
+    ReliefOnDelayS=FMath::Clamp(ReliefOnDelayS,0.f,1.f);
+    ReliefOffDelayS=FMath::Clamp(ReliefOffDelayS,0.f,1.f);
     if(bWorkingLayout) checkf(HeadType==TEXT("Paddle") || HeadType==TEXT("BucketWheel") || HeadType==TEXT("Helix"),
         TEXT("Working layout supports Paddle, BucketWheel or axial Helix"));
     if(HeadType!=TEXT("Paddle") && HeadType!=TEXT("Chevron") && HeadType!=TEXT("Spoke") && HeadType!=TEXT("Helix") && HeadType!=TEXT("BucketWheel"))
@@ -160,7 +169,8 @@ void ASandRoadheaderPawn::BeginPlay()
         M->SetVisibility(false);
     // Open top and separated tracks expose the working channel from both views.
     CameraBoom->TargetArmLength=235;
-    CameraBoom->SetRelativeRotation(FRotator(-32,-55,0));
+    ExternalCameraPitch=-32.f; ExternalCameraYaw=-55.f;
+    CameraBoom->SetRelativeRotation(FRotator(ExternalCameraPitch,ExternalCameraYaw,0));
     if(bBench)
     {
         ToolMount->SetRelativeLocation(FVector(0,0,4));
@@ -181,8 +191,8 @@ void ASandRoadheaderPawn::BeginPlay()
     ReferenceHeadZ=ToolMount->GetComponentTransform().TransformPosition(ReferenceCenter).Z/100
         +(FMath::Max(WorkingHeightCm,20.f)-ToolMount->GetRelativeLocation().Z)*ChassisBody->GetUpVector().Z/100;
     DesiredHeadZ=ReferenceHeadZ;
-    UE_LOG(LogTemp,Display,TEXT("HEAD_CONFIG type=%s pitchDeg=%.2f mountHeightCm=%.2f fixedBench=%d direction=%.0f depthRampM=%.3f minMountCm=%.2f approachCmPerS=%.2f helixMu=%.3f reliefOn=%.3f reliefOff=%.3f"),
-        *HeadType,HeadPitch,HeightCm,bBench,HeadDirection,DepthRampM,MinHeightCm,ApproachSpeedCmPerS,HelixFriction,ReliefOnLoad,ReliefOffLoad);
+    UE_LOG(LogTemp,Display,TEXT("HEAD_CONFIG type=%s pitchDeg=%.2f mountHeightCm=%.2f fixedBench=%d direction=%.0f depthRampM=%.3f minMountCm=%.2f approachCmPerS=%.2f helixMu=%.3f reliefOn=%.3f reliefOff=%.3f reliefDelay=%.3f/%.3f openTop=%d chainGain=%.1f chainLimitN=%.1f"),
+        *HeadType,HeadPitch,HeightCm,bBench,HeadDirection,DepthRampM,MinHeightCm,ApproachSpeedCmPerS,HelixFriction,ReliefOnLoad,ReliefOffLoad,ReliefOnDelayS,ReliefOffDelayS,bOpenTop,ChainDriveGain,ChainForceLimitN);
     auto* HeadMaterial=LoadObject<UMaterialInterface>(nullptr,TEXT("/Engine/TemplateResources/MI_Template_BaseOrange.MI_Template_BaseOrange"));
     for(int32 I=7;I<7+HeadElementCount();++I) MachineVisuals[I-2]->SetMaterial(0,HeadMaterial);
     if(FParse::Param(FCommandLine::Get(),TEXT("SandRoadheaderInside")))
@@ -201,7 +211,8 @@ void ASandRoadheaderPawn::BeginPlay()
         CameraBoom->bEnableCameraLag=false;
         CameraBoom->TargetArmLength=210;
         CameraBoom->SetRelativeLocation(FVector(35,0,15));
-        CameraBoom->SetRelativeRotation(FRotator(-22,135,0));
+        ExternalCameraPitch=-22.f; ExternalCameraYaw=135.f;
+        CameraBoom->SetRelativeRotation(FRotator(ExternalCameraPitch,ExternalCameraYaw,0));
     }
     if(FParse::Param(FCommandLine::Get(),TEXT("SandGeometryAudit"))) {
         const auto OriginalRotation=ToolMount->GetRelativeRotation();
@@ -260,8 +271,18 @@ void ASandRoadheaderPawn::Tick(float Dt)
         CameraBoom->bEnableCameraLag=!bInternalCamera;
         CameraBoom->TargetArmLength=bInternalCamera?0:235;
         CameraBoom->SetRelativeLocation(bInternalCamera?FVector(-65,0,43):FVector(0,0,28));
-        CameraBoom->SetRelativeRotation(bInternalCamera?FRotator(-16,0,0):FRotator(-32,-55,0));
+        CameraBoom->SetRelativeRotation(bInternalCamera?FRotator(-16,0,0):FRotator(ExternalCameraPitch,ExternalCameraYaw,0));
         FollowCamera->FieldOfView=bInternalCamera?78:58;
+    }
+    if(!bInternalCamera)
+    {
+        float MouseX=0,MouseY=0;
+        if(PC->IsInputKeyDown(EKeys::RightMouseButton)) PC->GetInputMouseDelta(MouseX,MouseY);
+        const float KeyYaw=(PC->IsInputKeyDown(EKeys::Right)?1.f:0.f)-(PC->IsInputKeyDown(EKeys::Left)?1.f:0.f);
+        const float KeyPitch=(PC->IsInputKeyDown(EKeys::Up)?1.f:0.f)-(PC->IsInputKeyDown(EKeys::Down)?1.f:0.f);
+        ExternalCameraYaw+=MouseX*.20f+KeyYaw*75.f*Dt;
+        ExternalCameraPitch=FMath::Clamp(ExternalCameraPitch-MouseY*.16f+KeyPitch*55.f*Dt,-78.f,-8.f);
+        CameraBoom->SetRelativeRotation(FRotator(ExternalCameraPitch,ExternalCameraYaw,0));
     }
     if(!bBench)
     {
@@ -435,7 +456,7 @@ void ASandRoadheaderPawn::BuildPhysicalTool(Sand::MPM::FToolColliderState& Tool,
         // before the load-bearing shell reaches it.
         Box(FVector3f(.59f,-.235f,AxialCenterZ),FVector3f(.27f,.015f,.22f));
         Box(FVector3f(.59f,.235f,AxialCenterZ),FVector3f(.27f,.015f,.22f));
-        Box(FVector3f(.59f,0,AxialCenterZ+.237f),FVector3f(.27f,.22f,.015f));
+        if(!bOpenTop) Box(FVector3f(.59f,0,AxialCenterZ+.237f),FVector3f(.27f,.22f,.015f));
     } else {
         Box(FVector3f(.50f,-.26f,.07f)+IntakeOffset,FVector3f(bWorkingLayout?.27f:.22f,.02f,bWorkingLayout?.22f:.18f));
         Box(FVector3f(.50f,.26f,.07f)+IntakeOffset,FVector3f(bWorkingLayout?.27f:.22f,.02f,bWorkingLayout?.22f:.18f));
@@ -612,6 +633,14 @@ void ASandRoadheaderPawn::CompletePhysicalStep(const Sand::MPM::FToolInteraction
     DrumLoad=DrumImpulse/FMath::Max(Dt,1.e-6f);
     FVector HeadReaction=FVector::ZeroVector;
     for(int32 I=7;I<7+HeadElementCount();++I) HeadReaction-=FVector(R.ColliderLinear[I])/Dt;
+    FVector CutAssemblyReaction=FVector::ZeroVector;
+    const FTransform Mount=ToolMount->GetComponentTransform();
+    for(uint32 I=5;I<T.ColliderCount;++I)
+    {
+        const FVector LocalCenter=Mount.InverseTransformPosition(FVector(T.Colliders[I].CenterMeters)*100);
+        if(T.Colliders[I].ChainDriveRatio==0 && LocalCenter.X>28.f)
+            CutAssemblyReaction-=FVector(R.ColliderLinear[I])/Dt;
+    }
     MeasuredDraftN=FVector::DotProduct(HeadReaction,GetActorForwardVector());
     ChainLoad=ChainImpulse/FMath::Max(Dt,1.e-6f);
     // Advance angles using exactly the speed submitted to the completed GPU step.
@@ -623,7 +652,7 @@ void ASandRoadheaderPawn::CompletePhysicalStep(const Sand::MPM::FToolInteraction
     if(StopAtSeconds>=0 && PhysicalTime>=StopAtSeconds) { bRunning=false; StopAtSeconds=-1; }
     const float DrumCommandSign=Direction*HeadDirection;
     DrumOmega=DrivenSpeed(DrumOmega,bRunning?DrumCommandSign*DrumTargetOmega:0,DrumImpulse,Dt,12,180,240);
-    ChainSpeed=DrivenSpeed(ChainSpeed,bRunning && !bChainStopped?Direction*.30f:0,ChainImpulse,Dt,50,1000,500);
+    ChainSpeed=DrivenSpeed(ChainSpeed,bRunning && !bChainStopped?Direction*.30f:0,ChainImpulse,Dt,50,ChainDriveGain,ChainForceLimitN);
     if(bRunning) { DrumOmega=DrumCommandSign*FMath::Max(0.0f,DrumCommandSign*DrumOmega); }
     if(bRunning && !bChainStopped) { ChainSpeed=Direction*FMath::Max(0.0f,Direction*ChainSpeed); }
     if(!bRunning) DrumOmega=BrakeSpeed(DrumOmega,Dt,12,300);
@@ -633,18 +662,21 @@ void ASandRoadheaderPawn::CompletePhysicalStep(const Sand::MPM::FToolInteraction
     PhysicalTime+=Dt;
     if(bRunning) MotorTime+=Dt;
     if(bAdaptiveFeed) {
-        FVector Reaction=FVector::ZeroVector;
-        for(uint32 I=2;I<T.ColliderCount;++I) Reaction-=FVector(R.ColliderLinear[I])/Dt;
         const float Budget=FMath::Max(25.f,FMath::Min(DriveForce/100,bFeedRig?DriveForce/100:GetTractionBudgetN()));
-        const float Load=FVector2D(Reaction.X,Reaction.Y).Size()/Budget;
+        // Feed relief responds to the complete front cutting assembly: rotor,
+        // shaft, casing and trough. Belt/return-path loads remain excluded.
+        const float Load=FVector2D(CutAssemblyReaction.X,CutAssemblyReaction.Y).Size()/Budget;
         // Sensor smoothing only. The complete contact reaction is still
         // applied, uncapped, to the chassis in the coupling callback.
         ControlLoadRatio=FMath::Lerp(ControlLoadRatio,Load,1-FMath::Exp(-Dt/.15f));
         const float ForwardSpeed=FVector::DotProduct(ChassisBody->GetPhysicsLinearVelocity(),GetActorForwardVector())/100;
         // Do not treat free-chassis settling or terrain-following motion as a
         // cutting overload before the tool has developed measurable reaction.
-        if(ControlLoadRatio>ReliefOnLoad || (ControlLoadRatio>.10f && ForwardSpeed<-.02f)) bDepthRelief=true;
-        else if(ControlLoadRatio<ReliefOffLoad && ForwardSpeed>-.005f) bDepthRelief=false;
+        const bool WantsRelief=ControlLoadRatio>ReliefOnLoad || (ControlLoadRatio>.10f && ForwardSpeed<-.02f);
+        ReliefRequestSeconds=WantsRelief?ReliefRequestSeconds+Dt:FMath::Max(0.f,ReliefRequestSeconds-2.f*Dt);
+        ReliefClearSeconds=ControlLoadRatio<ReliefOffLoad?ReliefClearSeconds+Dt:0.f;
+        if(!bDepthRelief && ReliefRequestSeconds>=ReliefOnDelayS) { bDepthRelief=true; ReliefClearSeconds=0; }
+        else if(bDepthRelief && ReliefClearSeconds>=ReliefOffDelayS) { bDepthRelief=false; ReliefRequestSeconds=0; }
     }
     if(bApproach || bTransferApron || bRaisedDrum || bWorkingLayout) {
         const float OldHeight=ToolMount->GetRelativeLocation().Z;

@@ -146,7 +146,7 @@ void ASandHUD::DrawHUD()
             TEXT("SPACE       Brake"),
             Machine ? TEXT("Q/E  Raise/lower   R  Auto depth") : TEXT("Q / E       Boom up / down"),
             Machine ? TEXT("T / G       Motor on-off / reverse") : TEXT("R / F       Stick in / out"),
-            Machine ? TEXT("C  View     P  Debug material points") : TEXT("T / G       Bucket curl / dump"),
+            Machine ? TEXT("C View  RMB drag/arrows Orbit  P Points") : TEXT("T / G       Bucket curl / dump"),
             TEXT("H           Hide / show this help"),
             TEXT("ESC         Quit game")
         };
