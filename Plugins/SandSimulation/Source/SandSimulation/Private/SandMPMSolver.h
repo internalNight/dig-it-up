@@ -168,6 +168,9 @@ struct FToolOrientedBoxState
     FVector3f MotionOrigin = FVector3f::ZeroVector;
     FQuat4f MotionRotation = FQuat4f::Identity;
     float SeparationSpeedLimit = 2.0f;
+    // Negative uses the material-wide tool coefficient. Non-negative values
+    // describe a distinct physical surface such as a polished screw flight.
+    float FrictionCoefficient = -1.0f;
     float OrbitRadius = .145f;
     float ChainFront = .32f;
     float Phase = 0;

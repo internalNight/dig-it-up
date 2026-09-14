@@ -141,5 +141,5 @@ protected:
     float CurrentTerrainGradientMagnitude = 0.0f;
     FVector AppliedContactForce=FVector::ZeroVector;
     float TractionBudgetN=0,DriveTargetMps=0;
-    float BearingNormalN=0;
+    float BearingNormalN=0,FilteredBearingNormalN=0;
 };

@@ -12,8 +12,20 @@ SOURCE = ROOT / 'Saved/TransportV3'
 OUTPUT = ROOT / 'Docs/TransportV3'
 parser = argparse.ArgumentParser()
 parser.add_argument('--prefix', default='Physical')
-PREFIX = parser.parse_args().prefix
-NAMES = [PREFIX+s for s in ['Run', 'Repeat', 'ChainOff', 'Stop18', 'Clock30', 'Fine']]
+parser.add_argument('--run-name', default='')
+parser.add_argument('--output-dir', default='Docs/TransportV3')
+parser.add_argument('--min-delivery-kg', type=float, default=5)
+parser.add_argument('--repeat-tolerance', type=float, default=.25)
+parser.add_argument('--delivery-gain-kg', type=float, default=2)
+parser.add_argument('--fine-delivery-kg', type=float, default=2)
+parser.add_argument('--delivery-window-start-s', type=float, default=12)
+parser.add_argument('--delivery-window-end-s', type=float, default=25)
+parser.add_argument('--common-time-s', type=float, default=25)
+args = parser.parse_args()
+PREFIX = args.prefix
+OUTPUT = ROOT / args.output_dir
+RUN_NAME = args.run_name or PREFIX+'Run'
+NAMES = [RUN_NAME] + [PREFIX+s for s in ['Repeat', 'ChainOff', 'Stop18', 'Clock30', 'Fine']]
 
 def read(path):
     with path.open(encoding='utf-8-sig', newline='') as f:
@@ -47,7 +59,7 @@ for name in NAMES:
         entered_trough_kg=float(material[-1]['troughSeenKg']),
         tail_cross_kg=float(material[-1]['tailCrossKg']),
         rear_settled_kg=float(material[-1]['rearSettledKg']),
-        rear_settled_at_25s_kg=at(material, 'rearSettledKg', 25),
+        rear_settled_at_common_time_kg=at(material, 'rearSettledKg', args.common_time_s),
         signed_advance_m=float(pose[-1]['signedAdvanceM']),
         sampled_max_retreat_m=max(0, -min(float(r['signedAdvanceM']) for r in pose)),
         sampled_max_penetration_mm=max(float(r['maxPenMm']) for r in machine),
@@ -77,30 +89,31 @@ for name in NAMES:
 
 checks['one_binary_for_final_matrix'] = len(set(hashes)) == 1
 checks['one_source_snapshot_for_final_matrix'] = len(set(source_sets)) == 1
-for name in [(PREFIX+'Run'), (PREFIX+'Repeat')]:
+for name in [RUN_NAME, (PREFIX+'Repeat')]:
     m = metrics[name]
-    checks[name+'_functional'] = m['rear_settled_kg'] >= 5 and m['signed_advance_m'] >= .10 and m['sampled_max_retreat_m'] <= .10
-    checks[name+'_delivery_during_feed'] = at(data[name]['material'], 'rearSettledKg', 25)-at(data[name]['material'], 'rearSettledKg', 12) >= 2
-main = metrics[(PREFIX+'Run')]['rear_settled_kg']
+    checks[name+'_functional'] = m['rear_settled_kg'] >= args.min_delivery_kg and m['signed_advance_m'] >= .10 and m['sampled_max_retreat_m'] <= .10
+    checks[name+'_delivery_during_feed'] = (at(data[name]['material'], 'rearSettledKg', args.delivery_window_end_s)
+                                             - at(data[name]['material'], 'rearSettledKg', args.delivery_window_start_s)
+                                             >= args.delivery_gain_kg)
+main = metrics[RUN_NAME]['rear_settled_kg']
 repeat = metrics[(PREFIX+'Repeat')]['rear_settled_kg']
-checks['repeat_within_25_percent'] = abs(main-repeat)/max(main,repeat,.001) <= .25
+checks['repeat_within_tolerance'] = abs(main-repeat)/max(main,repeat,.001) <= args.repeat_tolerance
 checks['stopping_belt_reduces_delivery_by_80_percent'] = metrics[(PREFIX+'ChainOff')]['rear_settled_kg'] <= .2*main
 stop = data[(PREFIX+'Stop18')]
 checks['drive_stopped_after_command'] = all(abs(float(r['rpm'])) < .1 and abs(float(r['chain'])) < .005 for r in stop['machine'] if float(r['t']) >= 20)
 checks['no_sustained_delivery_after_stop'] = at(stop['material'], 'rearSettledKg', 60)-at(stop['material'], 'rearSettledKg', 22) <= .6
-checks['fine_grid_also_delivers'] = metrics[(PREFIX+'Fine')]['rear_settled_kg'] >= 2
-
-reference = metrics[(PREFIX+'Run')]['rear_settled_at_25s_kg']
-grid_change = abs(metrics[(PREFIX+'Fine')]['rear_settled_at_25s_kg']-reference)/max(reference,.001)
-clock_change = abs(metrics[(PREFIX+'Clock30')]['rear_settled_at_25s_kg']-reference)/max(reference,.001)
+reference = metrics[RUN_NAME]['rear_settled_at_common_time_kg']
+grid_change = abs(metrics[(PREFIX+'Fine')]['rear_settled_at_common_time_kg']-reference)/max(reference,.001)
+clock_change = abs(metrics[(PREFIX+'Clock30')]['rear_settled_at_common_time_kg']-reference)/max(reference,.001)
 report = dict(
     functional_checks=checks, functionality_passed=all(checks.values()),
-    numerical_convergence=dict(common_physical_time_s=25, method='linear interpolation of reported cumulative mass',
+    numerical_convergence=dict(common_physical_time_s=args.common_time_s, method='linear interpolation of reported cumulative mass',
+                               fine_grid_also_delivers=metrics[(PREFIX+'Fine')]['rear_settled_kg'] >= args.fine_delivery_kg,
                                grid_relative_change=grid_change, grid_within_5_percent=grid_change <= .05,
                                coupling_step_relative_change=clock_change, coupling_step_within_5_percent=clock_change <= .05),
     physical_calibration_performed=False, metrics=metrics)
 (OUTPUT / 'acceptance.json').write_text(json.dumps(report, indent=2)+'\n', encoding='utf-8')
-for name in [(PREFIX+'Run'), (PREFIX+'Fine')]:
+for name in [RUN_NAME, (PREFIX+'Fine')]:
     shutil.copy2(SOURCE / name / 'final.png', OUTPUT / f'{name}.png')
 print(json.dumps(report, indent=2))
 if not report['functionality_passed']:

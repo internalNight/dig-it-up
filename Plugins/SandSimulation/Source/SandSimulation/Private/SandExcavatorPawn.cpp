@@ -260,6 +260,7 @@ void ASandExcavatorPawn::BeginPlay()
         ParticleSupportCeilingsCentimeters[Index] = GetActorLocation().Z - 7.0f;
     }
     ChassisBody->SetMassOverrideInKg(NAME_None, 12.0f, true);
+    FilteredBearingNormalN=12.0f*9.81f;
     const FLinearColor ConstructionYellow = FLinearColor::FromSRGBColor(FColor(224, 143, 22));
     const FLinearColor ArmYellow = FLinearColor::FromSRGBColor(FColor(243, 166, 33));
     const FLinearColor BucketSteel = FLinearColor::FromSRGBColor(FColor(92, 72, 49));
@@ -394,7 +395,9 @@ void ASandExcavatorPawn::Tick(const float DeltaSeconds)
     const bool LimitedTraction=FParse::Param(FCommandLine::Get(),TEXT("SandTraction"));
     if(LimitedTraction) {
         const float Mass=ChassisBody->GetMass();
-        const float Normal=FParse::Param(FCommandLine::Get(),TEXT("SandDirectReaction"))?BearingNormalN:GroundedSupportCount>0?FMath::Max(0.f,Mass*9.81f-(float)AppliedContactForce.Z):0;
+        const float Normal=FParse::Param(FCommandLine::Get(),TEXT("SandDirectReaction"))
+            ? (GroundedSupportCount>0?FilteredBearingNormalN:0.f)
+            : GroundedSupportCount>0?FMath::Max(0.f,Mass*9.81f-(float)AppliedContactForce.Z):0;
         float Mu=.6f; FParse::Value(FCommandLine::Get(),TEXT("SandTrackMu="),Mu);
         TractionBudgetN=FMath::Max(0.f,Mu*Normal);
         float Feed=1;
@@ -743,6 +746,10 @@ void ASandExcavatorPawn::ApplySandSuspension(
             ChassisBody->AddForce(DownhillForce, NAME_None, false);
         }
     }
+    const float NormalFilterAlpha=1.f-FMath::Exp(-DeltaSeconds/.12f);
+    FilteredBearingNormalN=GroundedSupportCount>0
+        ? FMath::Lerp(FilteredBearingNormalN,BearingNormalN,NormalFilterAlpha)
+        : 0.f;
 }
 
 #if WITH_DEV_AUTOMATION_TESTS

@@ -186,6 +186,14 @@ bool FSandBearingEnvelopeTest::RunTest(const FString&)
     H.Add(145); H.Add(150);
     TestTrue(TEXT("Bulk still supports with airborne samples"),Sand::Machine::ConnectedBearingHeight(H,5,250,Level));
     TestEqual(TEXT("Airborne samples cannot raise terrain"),Level,100.f);
+    H.RemoveAll([](float Z){return Z>=50 && Z<55;});
+    for(int32 I=0;I<10;++I) H.Add(57.5f);
+    TestTrue(TEXT("One sampling-scale sparse bin keeps bulk support"),Sand::Machine::ConnectedBearingHeight(H,5,250,Level));
+    TestEqual(TEXT("Connected bulk continues above one sparse bin"),Level,100.f);
+    H.RemoveAll([](float Z){return Z>=60 && Z<70;});
+    Sand::Machine::ConnectedBearingHeight(H,5,250,Level);
+    TestEqual(TEXT("Two consecutive sparse bins stop support"),Level,60.f);
+    for(int32 Z=12;Z<20;++Z) for(int32 I=0;I<10;++I) H.Add(2.5f+5*Z);
     for(int32 I=0;I<10;++I) H.Add(102.5f);
     Sand::Machine::ConnectedBearingHeight(H,5,250,Level);
     TestEqual(TEXT("Continuous deposition raises terrain"),Level,105.f);

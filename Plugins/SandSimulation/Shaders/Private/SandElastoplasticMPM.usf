@@ -309,6 +309,8 @@ void MPMUpdateGridCS(uint3 DispatchThreadId : SV_DispatchThreadID)
         const float3 VelocityBeforeToolContact = Velocity;
         const float3 ToolCenter = MPMToolCentersMeters[ToolIndex].xyz;
         const float3 ToolAxisX = MPMToolAxesX[ToolIndex].xyz;
+        const float ToolFriction = MPMToolAxesX[ToolIndex].w >= 0.0f ?
+            MPMToolAxesX[ToolIndex].w : MPMBoundaryFriction;
         const float3 ToolAxisY = MPMToolAxesY[ToolIndex].xyz;
         const float3 ToolAxisZ = MPMToolAxesZ[ToolIndex].xyz;
         const float3 ToolDelta = NodePosition - ToolCenter;
@@ -341,7 +343,7 @@ void MPMUpdateGridCS(uint3 DispatchThreadId : SV_DispatchThreadID)
                 if (TangentialSpeed > 1.0e-7f)
                 {
                     const float NewTangentialSpeed = max(
-                        0.0f, TangentialSpeed - MPMBoundaryFriction * RemovedNormalSpeed);
+                        0.0f, TangentialSpeed - ToolFriction * RemovedNormalSpeed);
                     RelativeVelocity +=
                         (NewTangentialSpeed / TangentialSpeed - 1.0f) * TangentialVelocity;
                 }
@@ -509,6 +511,8 @@ void MPMG2PCS(uint3 DispatchThreadId : SV_DispatchThreadID)
     {
         const float3 ToolCenter = MPMToolCentersMeters[ToolIndex].xyz;
         const float3 ToolAxisX = MPMToolAxesX[ToolIndex].xyz;
+        const float ToolFriction = MPMToolAxesX[ToolIndex].w >= 0.0f ?
+            MPMToolAxesX[ToolIndex].w : MPMBoundaryFriction;
         const float3 ToolAxisY = MPMToolAxesY[ToolIndex].xyz;
         const float3 ToolAxisZ = MPMToolAxesZ[ToolIndex].xyz;
         const float3 VelocityBeforeParticleContact = NewVelocity;
@@ -539,7 +543,7 @@ void MPMG2PCS(uint3 DispatchThreadId : SV_DispatchThreadID)
                 if (TangentialSpeed > 1.0e-7f)
                 {
                     const float NewTangentialSpeed = max(
-                        0.0f, TangentialSpeed - MPMBoundaryFriction * RemovedNormalSpeed);
+                        0.0f, TangentialSpeed - ToolFriction * RemovedNormalSpeed);
                     RelativeVelocity +=
                         (NewTangentialSpeed / TangentialSpeed - 1.0f) * TangentialVelocity;
                 }

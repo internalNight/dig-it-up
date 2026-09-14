@@ -69,12 +69,14 @@ void ASandRoadheaderPawn::BeginPlay()
 {
     Super::BeginPlay();
     bWorkingLayout=FParse::Param(FCommandLine::Get(),TEXT("SandWorkingLayout"));
+    FParse::Value(FCommandLine::Get(),TEXT("SandHead="),HeadType);
     if(bWorkingLayout) StartHeightCm=30;
     if(FParse::Param(FCommandLine::Get(),TEXT("SandDirectReaction")) && !FParse::Param(FCommandLine::Get(),TEXT("SandSynchronous")))
         UE_LOG(LogTemp,Fatal,TEXT("SandDirectReaction requires SandSynchronous"));
     float MachineMass=ChassisBody->GetMass();
     FParse::Value(FCommandLine::Get(),TEXT("SandMachineMassKg="),MachineMass);
     ChassisBody->SetMassOverrideInKg(NAME_None,FMath::Clamp(MachineMass,1.f,500.f),true);
+    FilteredBearingNormalN=MachineMass*9.81f;
     if(bWorkingLayout || FParse::Param(FCommandLine::Get(),TEXT("SandWideTracks"))) {
         LeftTrackCollider->SetRelativeLocation(FVector(0,-30,-3.5));
         RightTrackCollider->SetRelativeLocation(FVector(0,30,-3.5));
@@ -94,14 +96,27 @@ void ASandRoadheaderPawn::BeginPlay()
     bApproach=FParse::Param(FCommandLine::Get(),TEXT("SandApproach"));
     bAdaptiveFeed=FParse::Param(FCommandLine::Get(),TEXT("SandAdaptiveFeed"));
     if(bTransferApron) { IntakeOffset=FVector3f(.05f,0,0); ConveyorFront=.23f; }
-    if(bWorkingLayout) { IntakeOffset=FVector3f(.20f,0,.09f); ConveyorFront=.32f; bTransferApron=false; bRaisedDrum=false; }
+    if(bWorkingLayout) {
+        // The transverse wheel sits ahead of the belt. The axial screw already
+        // spans the intake-to-belt direction and therefore uses its own origin.
+        IntakeOffset=HeadType==TEXT("Helix")?FVector3f::ZeroVector:FVector3f(.20f,0,.09f);
+        ConveyorFront=HeadType==TEXT("Helix")?.30f:.32f;
+        bTransferApron=false; bRaisedDrum=false;
+    }
     FParse::Value(FCommandLine::Get(),TEXT("SandRigSpeed="),RigSpeed);
     FParse::Value(FCommandLine::Get(),TEXT("SandTestDuration="),TestDuration);
     FParse::Value(FCommandLine::Get(),TEXT("SandStopAt="),StopAtSeconds);
     FParse::Value(FCommandLine::Get(),TEXT("SandFeedEnd="),FeedEndSeconds);
+    FParse::Value(FCommandLine::Get(),TEXT("SandMinHeadHeightCm="),MinHeightCm);
+    FParse::Value(FCommandLine::Get(),TEXT("SandDepthRampM="),DepthRampM);
+    FParse::Value(FCommandLine::Get(),TEXT("SandApproachSpeedCmPerS="),ApproachSpeedCmPerS);
+    MinHeightCm=FMath::Clamp(MinHeightCm,-20.f,0.f);
+    DepthRampM=FMath::Clamp(DepthRampM,.10f,2.f);
+    ApproachSpeedCmPerS=FMath::Clamp(ApproachSpeedCmPerS,.5f,4.f);
     bAutoTest=FParse::Param(FCommandLine::Get(),TEXT("SandRoadheaderTest"));
     bStopTest=FParse::Param(FCommandLine::Get(),TEXT("SandRoadheaderStopped"));
     bRunning=bAutoTest && !bStopTest;
+    HeadDirection=FParse::Param(FCommandLine::Get(),TEXT("SandHeadReverse"))?-1.f:1.f;
     float RPM=DrumTargetOmega*30/PI;
     FParse::Value(FCommandLine::Get(),TEXT("SandDrumRPM="),RPM);
     DrumTargetOmega=FMath::Clamp(RPM,1.f,bWorkingLayout?90.f:40.f)*PI/30;
@@ -110,12 +125,18 @@ void ASandRoadheaderPawn::BeginPlay()
     bCutTest=bAutoTest && FParse::Param(FCommandLine::Get(),TEXT("SandCutTest"));
     bHoldTest=bAutoTest && FParse::Param(FCommandLine::Get(),TEXT("SandHoldTest"));
     bCutTest|=bHoldTest;
-    FParse::Value(FCommandLine::Get(),TEXT("SandHead="),HeadType);
     FParse::Value(FCommandLine::Get(),TEXT("SandSoilBench="),SoilCase);
     FParse::Value(FCommandLine::Get(),TEXT("SandBladeAngle="),BladeAngle);
     FParse::Value(FCommandLine::Get(),TEXT("SandBladeDepth="),BladeDepth);
     FParse::Value(FCommandLine::Get(),TEXT("SandBladeSpeed="),BladeSpeed);
-    if(bWorkingLayout) checkf(HeadType==TEXT("Paddle") || HeadType==TEXT("BucketWheel"),TEXT("Working layout supports transverse Paddle or BucketWheel"));
+    FParse::Value(FCommandLine::Get(),TEXT("SandHelixFriction="),HelixFriction);
+    FParse::Value(FCommandLine::Get(),TEXT("SandReliefOn="),ReliefOnLoad);
+    FParse::Value(FCommandLine::Get(),TEXT("SandReliefOff="),ReliefOffLoad);
+    HelixFriction=FMath::Clamp(HelixFriction,0.f,1.5f);
+    ReliefOnLoad=FMath::Clamp(ReliefOnLoad,.5f,2.f);
+    ReliefOffLoad=FMath::Clamp(ReliefOffLoad,.1f,ReliefOnLoad-.05f);
+    if(bWorkingLayout) checkf(HeadType==TEXT("Paddle") || HeadType==TEXT("BucketWheel") || HeadType==TEXT("Helix"),
+        TEXT("Working layout supports Paddle, BucketWheel or axial Helix"));
     if(HeadType!=TEXT("Paddle") && HeadType!=TEXT("Chevron") && HeadType!=TEXT("Spoke") && HeadType!=TEXT("Helix") && HeadType!=TEXT("BucketWheel"))
     {
         UE_LOG(LogTemp,Warning,TEXT("Unknown SandHead; using Paddle")); HeadType=TEXT("Paddle");
@@ -155,10 +176,13 @@ void ASandRoadheaderPawn::BeginPlay()
     LastControlLocation=InitialChassisLocation;
     // Initial level-bed reference; subsequent depth follows measured travel,
     // never a prescribed grain path. Manual Q/E overrides automatic approach.
-    ReferenceHeadZ=ToolMount->GetComponentTransform().TransformPosition(FVector(51,0,1)+FVector(IntakeOffset)*100).Z/100
+    const bool AxialHead=HeadType==TEXT("Spoke") || HeadType==TEXT("Helix");
+    const FVector ReferenceCenter=AxialHead?FVector(59,0,bWorkingLayout && HeadType==TEXT("Helix")?22:16):FVector(51,0,1)+FVector(IntakeOffset)*100;
+    ReferenceHeadZ=ToolMount->GetComponentTransform().TransformPosition(ReferenceCenter).Z/100
         +(FMath::Max(WorkingHeightCm,20.f)-ToolMount->GetRelativeLocation().Z)*ChassisBody->GetUpVector().Z/100;
     DesiredHeadZ=ReferenceHeadZ;
-    UE_LOG(LogTemp,Display,TEXT("HEAD_CONFIG type=%s pitchDeg=%.2f mountHeightCm=%.2f fixedBench=%d"),*HeadType,HeadPitch,HeightCm,bBench);
+    UE_LOG(LogTemp,Display,TEXT("HEAD_CONFIG type=%s pitchDeg=%.2f mountHeightCm=%.2f fixedBench=%d direction=%.0f depthRampM=%.3f minMountCm=%.2f approachCmPerS=%.2f helixMu=%.3f reliefOn=%.3f reliefOff=%.3f"),
+        *HeadType,HeadPitch,HeightCm,bBench,HeadDirection,DepthRampM,MinHeightCm,ApproachSpeedCmPerS,HelixFriction,ReliefOnLoad,ReliefOffLoad);
     auto* HeadMaterial=LoadObject<UMaterialInterface>(nullptr,TEXT("/Engine/TemplateResources/MI_Template_BaseOrange.MI_Template_BaseOrange"));
     for(int32 I=7;I<7+HeadElementCount();++I) MachineVisuals[I-2]->SetMaterial(0,HeadMaterial);
     if(FParse::Param(FCommandLine::Get(),TEXT("SandRoadheaderInside")))
@@ -203,10 +227,10 @@ void ASandRoadheaderPawn::BeginPlay()
         for(const auto& Entry:Depths) UE_LOG(LogTemp,Display,TEXT("GEOMETRY_OVERLAP a=%d b=%d depthMm=%.3f"),Entry.Key.X,Entry.Key.Y,1000*Entry.Value);
         UE_LOG(LogTemp,Display,TEXT("GEOMETRY_AUDIT independentPairsOver1mm=%d"),Depths.Num());
         Sand::MPM::FToolColliderState Geometry; BuildPhysicalTool(Geometry,0);
-        FString GeometryCSV=TEXT("id,motion,shape,x,y,z,hx,hy,hz,axx,axy,axz,ayx,ayy,ayz,azx,azy,azz\n");
+        FString GeometryCSV=TEXT("id,motion,shape,friction,x,y,z,hx,hy,hz,axx,axy,axz,ayx,ayy,ayz,azx,azy,azz\n");
         for(uint32 I=0;I<Geometry.ColliderCount;++I) {
             const auto& C=Geometry.Colliders[I];
-            GeometryCSV+=FString::Printf(TEXT("%u,%u,%u,%.6f,%.6f,%.6f,%.6f,%.6f,%.6f,%.6f,%.6f,%.6f,%.6f,%.6f,%.6f,%.6f,%.6f,%.6f\n"),I,C.Motion,C.Shape,C.CenterMeters.X,C.CenterMeters.Y,C.CenterMeters.Z,
+            GeometryCSV+=FString::Printf(TEXT("%u,%u,%u,%.6f,%.6f,%.6f,%.6f,%.6f,%.6f,%.6f,%.6f,%.6f,%.6f,%.6f,%.6f,%.6f,%.6f,%.6f,%.6f\n"),I,C.Motion,C.Shape,C.FrictionCoefficient,C.CenterMeters.X,C.CenterMeters.Y,C.CenterMeters.Z,
                 C.HalfExtentsMeters.X,C.HalfExtentsMeters.Y,C.HalfExtentsMeters.Z,C.AxisX.X,C.AxisX.Y,C.AxisX.Z,C.AxisY.X,C.AxisY.Y,C.AxisY.Z,C.AxisZ.X,C.AxisZ.Y,C.AxisZ.Z);
         }
         FFileHelper::SaveStringToFile(GeometryCSV,*(FPaths::ProjectSavedDir()/TEXT("TransportGeometry.csv")));
@@ -296,18 +320,31 @@ void ASandRoadheaderPawn::BuildPhysicalTool(Sand::MPM::FToolColliderState& Tool,
         C.AxisX=FVector3f(X.GetUnitAxis(EAxis::X)); C.AxisY=FVector3f(X.GetUnitAxis(EAxis::Y)); C.AxisZ=FVector3f(X.GetUnitAxis(EAxis::Z));
         C.HalfExtentsMeters=FVector3f(Track->GetScaledBoxExtent()/100.0);
     }
-    // A horizontal tray, open at both ends; returning slats pass below the floor.
-    Box(FVector3f((ConveyorFront+Rear)/2,0,0),FVector3f((ConveyorFront-Rear)/2,.22f,.015f));
-    Box(FVector3f(-.15f,-.235f,.065f),FVector3f(.47f,.015f,.08f));
-    Box(FVector3f(-.15f,.235f,.065f),FVector3f(.47f,.015f,.08f));
     const bool Axial=HeadType==TEXT("Spoke") || HeadType==TEXT("Helix");
-    Box(Axial?FVector3f(.59f,0,.16f):FVector3f(.51f,0,.01f)+IntakeOffset,Axial?FVector3f(.24f,.035f,.035f):FVector3f(.10f,.23f,.10f));
-    Box(Axial?FVector3f(.59f,0,.16f):FVector3f(.51f,0,.01f)+IntakeOffset,Axial?FVector3f(.24f,.035f,.035f):FVector3f(.07f,bWorkingLayout?.23f:.255f,.07f));
+    const bool WorkingHelix=bWorkingLayout && HeadType==TEXT("Helix");
+    const float BeltHalfWidth=WorkingHelix?.22f:.205f;
+    const float ConveyorWallY=WorkingHelix?.25f:.235f;
+    // A horizontal tray, open at both ends; returning slats pass below the floor.
+    Box(FVector3f((ConveyorFront+Rear)/2,0,0),FVector3f((ConveyorFront-Rear)/2,BeltHalfWidth+.015f,.015f));
+    Box(FVector3f(-.15f,-ConveyorWallY,.065f),FVector3f(.47f,.015f,.08f));
+    Box(FVector3f(-.15f,ConveyorWallY,.065f),FVector3f(.47f,.015f,.08f));
+    const float AxialCenterZ=bWorkingLayout && HeadType==TEXT("Helix")?.22f:.16f;
+    if(Axial) {
+        // One axial shaft plus a separate front collar. Earlier prototypes
+        // placed two identical shaft boxes here, which doubled their contact.
+        Box(FVector3f(.59f,0,AxialCenterZ),FVector3f(.23f,.026f,.026f));
+        Box(FVector3f(.84f,0,AxialCenterZ),FVector3f(.02f,.050f,.050f));
+    } else {
+        Box(FVector3f(.51f,0,.01f)+IntakeOffset,FVector3f(.10f,.23f,.10f));
+        Box(FVector3f(.51f,0,.01f)+IntakeOffset,FVector3f(.07f,bWorkingLayout?.23f:.255f,.07f));
+    }
     if(bWorkingLayout) for(int32 I=5;I<7;++I) {
         // The hub is part of the rotating assembly, never a stationary square
         // stator intersecting its own flights. Its contact contributes torque.
         auto& C=Tool.Colliders[I]; C.Motion=3; C.MotionOrigin=Origin; C.MotionRotation=Rotation;
-        C.RotorCenter=FVector3f(.51f,0,.01f)+IntakeOffset; C.RotorOffset=FVector3f::ZeroVector;
+        C.RotorAxis=Axial?FVector3f(1,0,0):FVector3f(0,1,0);
+        C.RotorCenter=Axial?FVector3f(.59f,0,AxialCenterZ):FVector3f(.51f,0,.01f)+IntakeOffset;
+        C.RotorOffset=Axial && I==6?FVector3f(.25f,0,0):FVector3f::ZeroVector;
         C.Phase=DrumAngle; C.Speed=-DrumOmega; C=SampleMachineCollider(C,Seconds);
     }
     for(int32 I=0;I<HeadElementCount();++I)
@@ -367,13 +404,14 @@ void ASandRoadheaderPawn::BuildPhysicalTool(Sand::MPM::FToolColliderState& Tool,
                 }
                 else
                 {
-                    // One turn assembled from inclined plates; deliberately
-                    // labelled segmented helix, not a continuous auger flight.
-                    // Negative pitch matches the plate normal and negative
-                    // rotation: the screw's axial phase travels toward -X.
-                    C.RotorOffset=Around.RotateVector(FVector3f(.225f-I*.015f,.12f,0));
-                    C.RotorOrientation=Around*FQuat4f(FVector3f(0,1,0),-.445f);
+                    // One 0.408 m turn assembled from inclined plates;
+                    // deliberately labelled segmented helix, not a continuous
+                    // auger flight. Its rear segment reaches the belt roller's
+                    // clearance envelope instead of leaving an unpowered gap.
+                    C.RotorOffset=Around.RotateVector(FVector3f(.225f-I*.0170f,.12f,0));
+                    C.RotorOrientation=Around*FQuat4f(FVector3f(0,1,0),-.50f);
                     C.HalfExtentsMeters=FVector3f(.014f,.085f,.033f);
+                    C.FrictionCoefficient=HelixFriction;
                 }
             }
         }
@@ -385,24 +423,32 @@ void ASandRoadheaderPawn::BuildPhysicalTool(Sand::MPM::FToolColliderState& Tool,
         auto& C=Tool.AddCollider(); C.Motion=2; C.MotionOrigin=Origin; C.MotionRotation=Rotation;
         C.ChainFront=ConveyorFront;
         C.Phase=ChainDistance+I*ConveyorLoop()/BladeCount; C.Speed=ChainSpeed;
-        C.HalfExtentsMeters=FVector3f(.018f,.205f,bWorkingLayout?.014f:.028f);
+        C.HalfExtentsMeters=FVector3f(.018f,BeltHalfWidth,bWorkingLayout?.014f:.028f);
         if(bWorkingLayout) { C.SurfaceOffset=.014f; C.ChainDriveRatio=1; }
         C=SampleMachineCollider(C,Seconds);
     }
-    // Enclose the sides and top of the drum, leaving the front intake and
-    // rear-to-tray route open. Guides return thrown material by solid contact.
-    Box(FVector3f(.50f,-.26f,.07f)+IntakeOffset,FVector3f(bWorkingLayout?.27f:.22f,.02f,bWorkingLayout?.22f:.18f));
-    Box(FVector3f(.50f,.26f,.07f)+IntakeOffset,FVector3f(bWorkingLayout?.27f:.22f,.02f,bWorkingLayout?.22f:.18f));
-    Box(FVector3f(.48f,0,Axial?.40f:bWorkingLayout?.305f:.265f)+IntakeOffset,FVector3f(.24f,.24f,.015f));
+    // Enclose the sides and top, leaving intake and discharge ends open.
+    // Axial and transverse heads require different envelopes and transfer paths.
     if(Axial) {
-        // Catch material below the axial head and bridge the previous open gap.
-        // A sloping shoe rises toward the rear tray; no particle capture.
-        auto* Shoe=Box(FVector3f(.50f,0,-.065f),FVector3f(.24f,.23f,.015f));
-        const FQuat4f Tilt=Rotation*FQuat4f(FVector3f(0,1,0),.35f);
-        Shoe->AxisX=Tilt.GetAxisX(); Shoe->AxisY=Tilt.GetAxisY(); Shoe->AxisZ=Tilt.GetAxisZ();
-        // Move axial rotation above the shoe so the lower blade clears it.
+        // Thin full-length side and top covers contain radial throw. The bottom
+        // trough remains short so the leading cutters clear undisturbed soil
+        // before the load-bearing shell reaches it.
+        Box(FVector3f(.59f,-.235f,AxialCenterZ),FVector3f(.27f,.015f,.22f));
+        Box(FVector3f(.59f,.235f,AxialCenterZ),FVector3f(.27f,.015f,.22f));
+        Box(FVector3f(.59f,0,AxialCenterZ+.237f),FVector3f(.27f,.22f,.015f));
+    } else {
+        Box(FVector3f(.50f,-.26f,.07f)+IntakeOffset,FVector3f(bWorkingLayout?.27f:.22f,.02f,bWorkingLayout?.22f:.18f));
+        Box(FVector3f(.50f,.26f,.07f)+IntakeOffset,FVector3f(bWorkingLayout?.27f:.22f,.02f,bWorkingLayout?.22f:.18f));
+        Box(FVector3f(.48f,0,bWorkingLayout?.305f:.265f)+IntakeOffset,FVector3f(.24f,.24f,.015f));
+    }
+    if(Axial) {
+        // A real trough supports axial screw transport. Its open rear edge sits
+        // just ahead of the front belt roller, so discharged material falls onto
+        // the moving surface without a stationary plate crossing the belt path.
+        Box(FVector3f(.575f,0,AxialCenterZ-.232f),FVector3f(.145f,.22f,.015f));
+        // Place axial rotation over the trough with the specified radial gap.
         for(int32 I=7;I<7+HeadElementCount();++I) {
-            auto& C=Tool.Colliders[I]; C.RotorCenter=FVector3f(.59f,0,.16f);
+            auto& C=Tool.Colliders[I]; C.RotorCenter=FVector3f(.59f,0,AxialCenterZ);
             C=SampleMachineCollider(C,Seconds);
         }
     }
@@ -413,7 +459,7 @@ void ASandRoadheaderPawn::BuildPhysicalTool(Sand::MPM::FToolColliderState& Tool,
         const FQuat4f Q=Rotation*FQuat4f(FVector3f(0,1,0),-FMath::Atan2(.11f,.12f));
         Apron->AxisX=Q.GetAxisX(); Apron->AxisY=Q.GetAxisY(); Apron->AxisZ=Q.GetAxisZ();
     }
-    if(bWorkingLayout) {
+    if(bWorkingLayout && !Axial) {
         // Gravity transfer chute outside both swept moving envelopes. Rear
         // edge is above the front flights, so sand falls onto their upper run.
         auto* Chute=Box(FVector3f(.40f,0,.16f),FVector3f(.0781f,.22f,.0125f));
@@ -423,13 +469,14 @@ void ASandRoadheaderPawn::BuildPhysicalTool(Sand::MPM::FToolColliderState& Tool,
     if(bWorkingLayout || FParse::Param(FCommandLine::Get(),TEXT("SandReturnGuard"))) {
         // Sealed return channel: real visible housing keeps ground out of the
         // counter-moving lower flights. Upper run and rear discharge stay open.
-        Box(FVector3f((ConveyorFront+Rear)/2,0,-.145f),FVector3f((ConveyorFront-Rear)/2,.235f,.015f));
-        for(float Y : {-.235f,.235f}) Box(FVector3f((ConveyorFront+Rear)/2,Y,-.085f),FVector3f((ConveyorFront-Rear)/2+(bWorkingLayout?.10f:.16f),.015f,.085f));
-        for(int32 End=0;End<(bWorkingLayout?1:2);++End) for(int32 I=0;I<3;++I) {
+        Box(FVector3f((ConveyorFront+Rear)/2,0,-.145f),FVector3f((ConveyorFront-Rear)/2,ConveyorWallY,.015f));
+        for(float Side : {-1.f,1.f}) Box(FVector3f((ConveyorFront+Rear)/2,Side*ConveyorWallY,-.085f),FVector3f((ConveyorFront-Rear)/2+(bWorkingLayout?.10f:.16f),.015f,.085f));
+        const int32 GuardEnds=bWorkingLayout?(Axial?0:1):2;
+        for(int32 End=0;End<GuardEnds;++End) for(int32 I=0;I<3;++I) {
             const float A=-PI/2+(I+.5f)*PI/6;
             const float Sign=End==0?1.f:-1.f;
             const float CX=End==0?ConveyorFront:Rear;
-            auto* Guard=Box(FVector3f(CX+Sign*.13f*FMath::Cos(A),0,Top-Radius+.13f*FMath::Sin(A)),FVector3f(.038f,.235f,.015f));
+            auto* Guard=Box(FVector3f(CX+Sign*.13f*FMath::Cos(A),0,Top-Radius+.13f*FMath::Sin(A)),FVector3f(.038f,ConveyorWallY,.015f));
             Guard->AxisX=Rotation.RotateVector(FVector3f(-Sign*FMath::Sin(A),0,FMath::Cos(A)));
             Guard->AxisY=Rotation.GetAxisY();
             Guard->AxisZ=FVector3f::CrossProduct(Guard->AxisX,Guard->AxisY);
@@ -439,14 +486,14 @@ void ASandRoadheaderPawn::BuildPhysicalTool(Sand::MPM::FToolColliderState& Tool,
         // Continuous moving belt: straight skins and real cylindrical end drums.
         // Contact has finite Coulomb friction and contributes to motor load.
         auto& Upper=Tool.Colliders[2]; Upper.CenterMeters=Origin+Rotation.RotateVector(FVector3f((ConveyorFront+Rear)/2,0,.03f));
-        Upper.HalfExtentsMeters=FVector3f((ConveyorFront-Rear)/2,.205f,.015f);
+        Upper.HalfExtentsMeters=FVector3f((ConveyorFront-Rear)/2,BeltHalfWidth,.015f);
         Upper.Motion=4; Upper.MotionRotation=Rotation; Upper.Speed=-ChainSpeed; Upper.ChainDriveRatio=-1;
         Upper=SampleMachineCollider(Upper,Seconds);
-        auto* Lower=Box(FVector3f((ConveyorFront+Rear)/2,0,-.07f),FVector3f((ConveyorFront-Rear)/2,.205f,.015f));
+        auto* Lower=Box(FVector3f((ConveyorFront+Rear)/2,0,-.07f),FVector3f((ConveyorFront-Rear)/2,BeltHalfWidth,.015f));
         Lower->Motion=4; Lower->MotionRotation=Rotation; Lower->Speed=ChainSpeed; Lower->ChainDriveRatio=1;
         *Lower=SampleMachineCollider(*Lower,Seconds);
         for(float X : {Rear,ConveyorFront}) {
-            auto* Roller=Box(FVector3f(X,0,Top-Radius),FVector3f(Radius,.205f,Radius));
+            auto* Roller=Box(FVector3f(X,0,Top-Radius),FVector3f(Radius,BeltHalfWidth,Radius));
             Roller->Shape=1; Roller->Motion=3; Roller->MotionOrigin=Origin; Roller->MotionRotation=Rotation;
             Roller->RotorCenter=FVector3f(X,0,Top-Radius); Roller->RotorOffset=FVector3f::ZeroVector;
             Roller->Phase=RollerAngle; Roller->Speed=-ChainSpeed/Radius; Roller->ChainDriveRatio=-1/Radius;
@@ -526,7 +573,7 @@ void ASandRoadheaderPawn::UpdateMachineVisuals()
 bool ASandRoadheaderPawn::IsConveyorRegion(const FVector3f& Position) const
 {
     const FVector L=ToolMount->GetComponentTransform().InverseTransformPosition(FVector(Position)*100);
-    return L.X>-72 && L.X<32 && FMath::Abs(L.Y)<23 && L.Z>1.5 && L.Z<20;
+    return L.X>-72 && L.X<32 && FMath::Abs(L.Y)<(HeadType==TEXT("Helix")?24.5f:23.f) && L.Z>1.5 && L.Z<20;
 }
 
 void ASandRoadheaderPawn::CompletePhysicalStep(const Sand::MPM::FToolInteractionResult& R,
@@ -543,7 +590,8 @@ void ASandRoadheaderPawn::CompletePhysicalStep(const Sand::MPM::FToolInteraction
         for(uint32 I=0;I<EndTool.ColliderCount;++I) EndTool.Colliders[I]=Sand::MPM::SampleMachineCollider(EndTool.Colliders[I],Dt);
     }
     const bool Axial=HeadType==TEXT("Spoke") || HeadType==TEXT("Helix");
-    const FVector3f DrumCenter(ToolMount->GetComponentTransform().TransformPosition(Axial?FVector(59,0,16):FVector(51,0,1)+FVector(IntakeOffset)*100)/100.0);
+    const FVector3f DrumCenter(ToolMount->GetComponentTransform().TransformPosition(
+        Axial?FVector(59,0,bWorkingLayout && HeadType==TEXT("Helix")?22:16):FVector(51,0,1)+FVector(IntakeOffset)*100)/100.0);
     const FVector3f Axis((HeadType==TEXT("Spoke") || HeadType==TEXT("Helix"))?ToolMount->GetForwardVector():ToolMount->GetRightVector());
     float DrumImpulse=0, ChainImpulse=0;
     for(int32 I=bWorkingLayout?5:7;I<7+HeadElementCount();++I)
@@ -573,9 +621,10 @@ void ASandRoadheaderPawn::CompletePhysicalStep(const Sand::MPM::FToolInteraction
     // Low-speed, high-torque geared drives. An anti-rollback clutch prevents
     // uncommanded reversal under overload; excess load can still stall the drum.
     if(StopAtSeconds>=0 && PhysicalTime>=StopAtSeconds) { bRunning=false; StopAtSeconds=-1; }
-    DrumOmega=DrivenSpeed(DrumOmega,bRunning?Direction*DrumTargetOmega:0,DrumImpulse,Dt,12,180,240);
+    const float DrumCommandSign=Direction*HeadDirection;
+    DrumOmega=DrivenSpeed(DrumOmega,bRunning?DrumCommandSign*DrumTargetOmega:0,DrumImpulse,Dt,12,180,240);
     ChainSpeed=DrivenSpeed(ChainSpeed,bRunning && !bChainStopped?Direction*.30f:0,ChainImpulse,Dt,50,1000,500);
-    if(bRunning) { DrumOmega=Direction*FMath::Max(0.0f,Direction*DrumOmega); }
+    if(bRunning) { DrumOmega=DrumCommandSign*FMath::Max(0.0f,DrumCommandSign*DrumOmega); }
     if(bRunning && !bChainStopped) { ChainSpeed=Direction*FMath::Max(0.0f,Direction*ChainSpeed); }
     if(!bRunning) DrumOmega=BrakeSpeed(DrumOmega,Dt,12,300);
     if(!bRunning || bChainStopped) ChainSpeed=BrakeSpeed(ChainSpeed,Dt,50,1000);
@@ -592,21 +641,23 @@ void ASandRoadheaderPawn::CompletePhysicalStep(const Sand::MPM::FToolInteraction
         // applied, uncapped, to the chassis in the coupling callback.
         ControlLoadRatio=FMath::Lerp(ControlLoadRatio,Load,1-FMath::Exp(-Dt/.15f));
         const float ForwardSpeed=FVector::DotProduct(ChassisBody->GetPhysicsLinearVelocity(),GetActorForwardVector())/100;
-        if(ControlLoadRatio>.85f || ForwardSpeed<-.02f) bDepthRelief=true;
-        else if(ControlLoadRatio<.55f && ForwardSpeed>-.005f) bDepthRelief=false;
+        // Do not treat free-chassis settling or terrain-following motion as a
+        // cutting overload before the tool has developed measurable reaction.
+        if(ControlLoadRatio>ReliefOnLoad || (ControlLoadRatio>.10f && ForwardSpeed<-.02f)) bDepthRelief=true;
+        else if(ControlLoadRatio<ReliefOffLoad && ForwardSpeed>-.005f) bDepthRelief=false;
     }
     if(bApproach || bTransferApron || bRaisedDrum || bWorkingLayout) {
         const float OldHeight=ToolMount->GetRelativeLocation().Z;
-        float NewHeight=bApproach?FMath::Max(WorkingHeightCm,StartHeightCm-FMath::Max(0.f,MotorTime-1.f)*2.5f):FMath::Clamp(OldHeight+HeightInput*Dt*4.f,-6.f,StartHeightCm);
+        float NewHeight=bApproach?FMath::Max(WorkingHeightCm,StartHeightCm-FMath::Max(0.f,MotorTime-1.f)*2.5f):FMath::Clamp(OldHeight+HeightInput*Dt*4.f,MinHeightCm,StartHeightCm);
         if(bAdaptiveFeed && bApproach) {
             const FVector Position=ChassisBody->GetComponentLocation();
             if(bRunning) ControlAdvanceM+=float(FVector::DotProduct(Position-LastControlLocation,GetActorForwardVector())/100);
             LastControlLocation=Position;
-            DesiredHeadZ=ReferenceHeadZ-(FMath::Max(20.f,WorkingHeightCm)-WorkingHeightCm)/100*FMath::Clamp(ControlAdvanceM/.48f,0.f,1.f);
-            const float TargetHeight=FMath::Clamp(OldHeight+100*(DesiredHeadZ-DrumCenter.Z)/FMath::Max(.5f,float(ChassisBody->GetUpVector().Z)),-6.f,StartHeightCm);
+            DesiredHeadZ=ReferenceHeadZ-(FMath::Max(20.f,WorkingHeightCm)-WorkingHeightCm)/100*FMath::Clamp(ControlAdvanceM/DepthRampM,0.f,1.f);
+            const float TargetHeight=FMath::Clamp(OldHeight+100*(DesiredHeadZ-DrumCenter.Z)/FMath::Max(.5f,float(ChassisBody->GetUpVector().Z)),MinHeightCm,StartHeightCm);
             NewHeight=OldHeight;
             if(bRunning && MotorTime>1) NewHeight=bDepthRelief?FMath::Min(StartHeightCm,OldHeight+4.f*Dt)
-                :FMath::FInterpConstantTo(OldHeight,TargetHeight,Dt,1.5f);
+                :FMath::FInterpConstantTo(OldHeight,TargetHeight,Dt,ApproachSpeedCmPerS);
         }
         LiftSpeedMps=(NewHeight-OldHeight)/(100*Dt);
         ToolMount->SetRelativeLocation(FVector(0,0,NewHeight));
@@ -638,8 +689,11 @@ void ASandRoadheaderPawn::CompletePhysicalStep(const Sand::MPM::FToolInteraction
             const double Mass=P.PositionAndMass.W;
             const FVector H=L-FVector(IntakeOffset)*100;
             const float EnvelopeCm=bWorkingLayout?28.f:23.f;
-            const bool InRotor=FMath::Abs(H.X-51)<EnvelopeCm && FMath::Abs(H.Y)<24 && FMath::Abs(H.Z-1)<EnvelopeCm;
-            const bool InTrough=L.X<25 && L.X> -55 && FMath::Abs(L.Y)<20.5 && L.Z>1.5 && L.Z<15;
+            const bool AxialHead=HeadType==TEXT("Spoke") || HeadType==TEXT("Helix");
+            const bool InRotor=AxialHead
+                ? L.X>28 && L.X<90 && FMath::Abs(L.Y)<24 && FMath::Abs(L.Z-(bWorkingLayout && HeadType==TEXT("Helix")?22:16))<24
+                : FMath::Abs(H.X-51)<EnvelopeCm && FMath::Abs(H.Y)<24 && FMath::Abs(H.Z-1)<EnvelopeCm;
+            const bool InTrough=L.X<25 && L.X> -55 && FMath::Abs(L.Y)<(HeadType==TEXT("Helix")?22.f:20.5f) && L.Z>1.5 && L.Z<15;
             if(InRotor) { RotorMass+=Mass; if(!(History&4)) { History|=4; IntakeSeenMass+=Mass; } }
             if((History&4) && !(History&8) && P.PositionAndMass.Z>GetDefault<USandLevelSettings>()->SandDepthMeters+.03f) { History|=8; LiftedMass+=Mass; }
             if(InTrough) { TroughMass+=Mass; if(!(History&1)) { History|=1; TroughSeenMass+=Mass; } }
@@ -743,7 +797,7 @@ void ASandRoadheaderPawn::CompleteSoilStep(const Sand::MPM::FToolInteractionResu
     if(bRunning) MotorTime+=Dt;
     if(bApproach || bTransferApron || bRaisedDrum || bWorkingLayout) {
         const float OldHeight=ToolMount->GetRelativeLocation().Z;
-        const float NewHeight=bApproach?FMath::Max(WorkingHeightCm,StartHeightCm-FMath::Max(0.f,MotorTime-1.f)*2.5f):FMath::Clamp(OldHeight+HeightInput*Dt*4.f,-6.f,StartHeightCm);
+        const float NewHeight=bApproach?FMath::Max(WorkingHeightCm,StartHeightCm-FMath::Max(0.f,MotorTime-1.f)*2.5f):FMath::Clamp(OldHeight+HeightInput*Dt*4.f,MinHeightCm,StartHeightCm);
         LiftSpeedMps=(NewHeight-OldHeight)/(100*Dt);
         ToolMount->SetRelativeLocation(FVector(0,0,NewHeight));
     }

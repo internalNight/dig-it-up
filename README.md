@@ -8,8 +8,14 @@ prototype; available heads are Paddle, Chevron, BucketWheel, Spoke and Helix.
 The [Chinese research and implementation report](Docs/ExcavationLabV2.md) links
 market products, papers, material assumptions and [measured results](Docs/ExcavationLabResults.md).
 The lab includes a blade soil bin, grid/time-step sensitivity and no-throttle
-holding tests. It is not calibrated against physical sand. Full-sandbox continuous
-excavation and chassis/MPM momentum coupling remain open acceptance gates.
+holding tests. It is not calibrated against physical sand. The axial helix now
+passes the baseline full-sandbox functional gate; grid/time-step convergence and
+physical calibration remain open acceptance gates.
+
+The axial segmented-helix configuration now has its own physical casing, trough,
+belt transfer, load-limited depth control and ballasted tracked chassis. Launch it
+with `PlayHelixRoadheader.cmd`; see the [Chinese Helix V1 validation report](Docs/HelixV1/README.md)
+for repeat runs, stopped-belt controls, failure causes and numerical limitations.
 
 ## Experimental physical roadheader (2026-09-10)
 

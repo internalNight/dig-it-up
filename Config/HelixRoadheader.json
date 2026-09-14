@@ -1,0 +1,12 @@
+{
+  "description": "Axial segmented-helix research prototype with physical screw-to-belt transfer; parameters are configuration-specific and uncalibrated.",
+  "flags": [
+    "-SandRoadheader", "-SandMaterial=DryCorotated", "-SandHead=Helix",
+    "-SandWorkingLayout", "-SandApproach", "-SandAdaptiveFeed", "-SandDenseSupport",
+    "-SandDepthRampM=0.20", "-SandMinHeadHeightCm=-20", "-SandApproachSpeedCmPerS=2.5",
+    "-SandReliefOn=1.15", "-SandReliefOff=0.70",
+    "-SandHeadHeightCm=0", "-SandHeadPitch=-10", "-SandDrumRPM=45", "-SandHelixFriction=0.25",
+    "-SandSynchronous", "-SandDirectReaction", "-SandTraction", "-SandTractionCompensation",
+    "-SandMachineMassKg=200", "-SandDriveForceN=600", "-SandGeometryAudit"
+  ]
+}

@@ -1,0 +1,5 @@
+SOIL_CONFIG phiDeg=35.000 cohesionPa=0.000 toolMu=0.500 dampingPerSec=0.150 dilationActive=1 dilationDeg=0.000
+TIME_GRID outerSeconds=0.033333335 internalSeconds=0.001666667 substeps=20
+MACHINE_MASS kg=200.00 driveLimitN=600.00
+HEAD_CONFIG type=Helix pitchDeg=-10.00 mountHeightCm=0.00 fixedBench=0 direction=1 depthRampM=0.200 minMountCm=-20.00 approachCmPerS=2.50 helixMu=0.250 reliefOn=1.150 reliefOff=0.700
+GEOMETRY_AUDIT independentPairsOver1mm=0

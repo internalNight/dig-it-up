@@ -1,16 +1,24 @@
-param([string]$EngineRoot='D:\UE_5.8',[switch]$SkipFine,[string]$Prefix='Physical')
+param(
+    [string]$EngineRoot='D:\UE_5.8',
+    [switch]$SkipFine,
+    [string]$Prefix='Physical',
+    [string]$Profile='RoadheaderTransport.json',
+    [int]$MainDuration=60,
+    [int]$SensitivityDuration=26,
+    [float]$StopAt=18
+)
 $ErrorActionPreference='Stop'
 $root=Split-Path $PSScriptRoot -Parent
-$profile=Get-Content -LiteralPath (Join-Path $root 'Config\RoadheaderTransport.json') -Raw | ConvertFrom-Json
+$profile=Get-Content -LiteralPath (Join-Path $root ('Config\'+$Profile)) -Raw | ConvertFrom-Json
 $base=($profile.flags -join ' ')+' -SandCutTest -SandFeedEnd=50'
 $cases=@(
-    @{Name=$Prefix+'Run';Duration=60;Extra=' -SandMachineCapture'},
-    @{Name=$Prefix+'Repeat';Duration=60;Extra=''},
-    @{Name=$Prefix+'ChainOff';Duration=60;Extra=' -SandChainStopped'},
-    @{Name=$Prefix+'Stop18';Duration=60;Extra=' -SandStopAt=18'},
-    @{Name=$Prefix+'Clock30';Duration=26;Extra=' -SandCouplingHz=30'}
+    @{Name=$Prefix+'Run';Duration=$MainDuration;Extra=' -SandMachineCapture'},
+    @{Name=$Prefix+'Repeat';Duration=$MainDuration;Extra=''},
+    @{Name=$Prefix+'ChainOff';Duration=$MainDuration;Extra=' -SandChainStopped'},
+    @{Name=$Prefix+'Stop18';Duration=$MainDuration;Extra=(' -SandStopAt='+$StopAt)},
+    @{Name=$Prefix+'Clock30';Duration=$SensitivityDuration;Extra=' -SandCouplingHz=30'}
 )
-if(!$SkipFine) {$cases+=@{Name=$Prefix+'Fine';Duration=26;Extra=' -SandQuality=Fine'}}
+if(!$SkipFine) {$cases+=@{Name=$Prefix+'Fine';Duration=$SensitivityDuration;Extra=' -SandQuality=Fine'}}
 foreach($case in $cases) {
     & (Join-Path $PSScriptRoot 'TestRoadheaderTransport.ps1') -Name $case.Name -Duration $case.Duration -Flags ($base+$case.Extra) -EngineRoot $EngineRoot
     if($case.Name -eq ($Prefix+'Run')) {

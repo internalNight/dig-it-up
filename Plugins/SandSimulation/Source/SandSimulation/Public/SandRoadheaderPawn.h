@@ -68,12 +68,18 @@ private:
     float ConveyorFront=.32f, TargetPitch=0, MotorTime=0, WorkingHeightCm=4;
     float HeightInput=0, LiftSpeedMps=0, DrumTargetOmega=1.8f;
     float StartHeightCm=24;
+    float MinHeightCm=-6;
+    float DepthRampM=.48f;
+    float ApproachSpeedCmPerS=1.5f;
+    float HelixFriction=.25f;
+    float ReliefOnLoad=.85f, ReliefOffLoad=.55f;
     float ConveyorLoop() const;
     float RigStart() const { return bApproach?9.f:2.f; }
     float RigSpeed = .03f;
     float TestDuration = 16.f, StopAtSeconds=-1, FeedEndSeconds=25;
     FVector InitialChassisLocation = FVector::ZeroVector;
     float Direction = 1;
+    float HeadDirection = 1;
     float PhysicalTime = 0;
     float NextReport = 0;
     double InitialMass = -1;
