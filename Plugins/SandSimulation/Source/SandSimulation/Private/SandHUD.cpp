@@ -14,6 +14,164 @@
 #include "Misc/CommandLine.h"
 #include "Misc/Parse.h"
 
+bool ASandHUD::UsesMobileControls() const
+{
+#if PLATFORM_ANDROID
+    return true;
+#else
+    return FParse::Param(FCommandLine::Get(), TEXT("SandTouchPreview"));
+#endif
+}
+
+void ASandHUD::PollMobileControls()
+{
+    DriveInput = FVector2D::ZeroVector;
+    LeverInput[0] = LeverInput[1] = LeverInput[2] = 0.0f;
+    bDriveActive = false;
+    if (!UsesMobileControls() || !PlayerOwner)
+    {
+        return;
+    }
+
+    int32 Width = 0, Height = 0;
+    PlayerOwner->GetViewportSize(Width, Height);
+    if (Width <= 0 || Height <= 0)
+    {
+        return;
+    }
+    const float ScreenW = static_cast<float>(Width);
+    const float ScreenH = static_cast<float>(Height);
+    const float Radius = 0.115f * ScreenH;
+    const float LeverTravel = 0.17f * ScreenH;
+    const float LeverX[3] = {0.67f * ScreenW, 0.79f * ScreenW, 0.91f * ScreenW};
+
+    // Keep each finger on the control where it first touched. A finger sliding
+    // across controls cannot accidentally move another joint.
+    for (int32 Finger = 0; Finger < UE_ARRAY_COUNT(Touches); ++Finger)
+    {
+        float X = 0.0f, Y = 0.0f;
+        bool bPressed = false;
+        PlayerOwner->GetInputTouchState(static_cast<ETouchIndex::Type>(Finger), X, Y, bPressed);
+        FTouchCapture& Capture = Touches[Finger];
+        if (!bPressed)
+        {
+            Capture = FTouchCapture();
+            continue;
+        }
+        const FVector2D Point(X, Y);
+        if (!Capture.bDown)
+        {
+            Capture.bDown = true;
+            Capture.Start = Point;
+            Capture.Control = -1;
+            if (X < 0.34f * ScreenW && Y > 0.48f * ScreenH)
+            {
+                Capture.Control = 0;
+            }
+            else if (X > 0.60f * ScreenW && Y > 0.44f * ScreenH && Y < 0.96f * ScreenH)
+            {
+                for (int32 Lever = 0; Lever < 3; ++Lever)
+                {
+                    if (FMath::Abs(X - LeverX[Lever]) < 0.052f * ScreenW)
+                    {
+                        Capture.Control = static_cast<int8>(Lever + 1);
+                        break;
+                    }
+                }
+            }
+            // One finger per control; the first finger keeps ownership.
+            for (int32 Other = 0; Other < UE_ARRAY_COUNT(Touches); ++Other)
+            {
+                if (Other != Finger && Capture.Control >= 0 && Touches[Other].bDown &&
+                    Touches[Other].Control == Capture.Control)
+                {
+                    Capture.Control = -1;
+                    break;
+                }
+            }
+        }
+        Capture.Position = Point;
+    }
+
+    for (const FTouchCapture& Capture : Touches)
+    {
+        if (!Capture.bDown || Capture.Control < 0)
+        {
+            continue;
+        }
+        if (Capture.Control == 0)
+        {
+            bDriveActive = true;
+            DriveOrigin = Capture.Start;
+            const FVector2D Drag = (Capture.Position - Capture.Start) / Radius;
+            DriveInput = Drag.GetClampedToMaxSize(1.0);
+            DriveInput.Y = -DriveInput.Y;
+            if (DriveInput.Size() < 0.07)
+            {
+                DriveInput = FVector2D::ZeroVector;
+            }
+        }
+        else
+        {
+            float Value = FMath::Clamp((Capture.Start.Y - Capture.Position.Y) / LeverTravel, -1.0f, 1.0f);
+            LeverInput[Capture.Control - 1] = FMath::Abs(Value) < 0.06f ? 0.0f : Value;
+        }
+    }
+}
+
+void ASandHUD::GetMobileControls(float& Throttle, float& Steering, float& Boom,
+    float& Stick, float& Bucket) const
+{
+    Throttle = static_cast<float>(DriveInput.Y);
+    Steering = static_cast<float>(DriveInput.X);
+    Boom = LeverInput[0];
+    Stick = LeverInput[1];
+    Bucket = LeverInput[2];
+}
+
+void ASandHUD::DrawMobileControls()
+{
+    const float W = Canvas->SizeX, H = Canvas->SizeY;
+    const float S = FMath::Clamp(H / 720.0f, 0.8f, 1.5f);
+    const float Radius = 0.115f * H;
+    const FVector2D Base = bDriveActive ? DriveOrigin : FVector2D(0.16f * W, 0.75f * H);
+    const FVector2D Knob = Base + FVector2D(DriveInput.X, -DriveInput.Y) * Radius;
+    const FLinearColor Amber(1.0f, 0.72f, 0.16f, 0.9f);
+    const FLinearColor White(0.88f, 0.93f, 1.0f, 0.9f);
+    DrawRect(FLinearColor(0.02f, 0.04f, 0.06f, 0.42f), Base.X - Radius * 1.25f,
+        Base.Y - Radius * 1.3f, Radius * 2.5f, Radius * 2.7f);
+    constexpr int32 Segments = 32;
+    for (int32 Part = 0; Part < Segments; ++Part)
+    {
+        const float A = 2.0f * PI * Part / Segments;
+        const float B = 2.0f * PI * (Part + 1) / Segments;
+        DrawLine(Base.X + FMath::Cos(A) * Radius, Base.Y + FMath::Sin(A) * Radius,
+            Base.X + FMath::Cos(B) * Radius, Base.Y + FMath::Sin(B) * Radius, White, 2.5f * S);
+    }
+    DrawRect(Amber, Knob.X - 15.0f * S, Knob.Y - 15.0f * S, 30.0f * S, 30.0f * S);
+    DrawText(TEXT("DRIVE / STEER"), White, Base.X - 48.0f * S,
+        FMath::Min(H - 29.0f * S, Base.Y + Radius + 13.0f * S), GEngine->GetSmallFont(), S);
+
+    const float Xs[3] = {0.67f * W, 0.79f * W, 0.91f * W};
+    const TCHAR* Names[3] = {TEXT("BOOM"), TEXT("STICK"), TEXT("BUCKET")};
+    const float CentreY = 0.74f * H, Travel = 0.17f * H;
+    for (int32 Lever = 0; Lever < 3; ++Lever)
+    {
+        const float X = Xs[Lever];
+        DrawRect(FLinearColor(0.02f, 0.04f, 0.06f, 0.5f), X - 43.0f * S,
+            CentreY - Travel - 45.0f * S, 86.0f * S, 2.0f * Travel + 93.0f * S);
+        DrawText(Names[Lever], White, X - 27.0f * S, CentreY - Travel - 35.0f * S,
+            GEngine->GetSmallFont(), S);
+        DrawRect(FLinearColor(0.55f, 0.65f, 0.75f, 0.8f), X - 3.0f * S,
+            CentreY - Travel, 6.0f * S, 2.0f * Travel);
+        DrawRect(White, X - 27.0f * S, CentreY - 1.0f * S, 54.0f * S, 2.0f * S);
+        DrawRect(Amber, X - 26.0f * S, CentreY - LeverInput[Lever] * Travel - 15.0f * S,
+            52.0f * S, 30.0f * S);
+        DrawText(TEXT("UP  /  DOWN"), White, X - 38.0f * S,
+            CentreY + Travel + 14.0f * S, GEngine->GetSmallFont(), 0.85f * S);
+    }
+}
+
 void ASandHUD::DrawHUD()
 {
     Super::DrawHUD();
@@ -124,7 +282,7 @@ void ASandHUD::DrawHUD()
             FLinearColor(1,0.85f,0.55f),Canvas->SizeX*0.5f-145*UiScale,Canvas->SizeY-60*UiScale,Font,1.15f*UiScale,false);
     }
 
-    if (bShowControls)
+    if (bShowControls && !UsesMobileControls())
     {
         const float PanelY = Margin + 90.0f * UiScale;
         DrawRect(FLinearColor(0.015f, 0.02f, 0.025f, 0.72f),
@@ -161,7 +319,7 @@ void ASandHUD::DrawHUD()
                 Font, 0.96f * UiScale, false);
         }
     }
-    else
+    else if (!UsesMobileControls())
     {
         DrawText(TEXT("H  Show controls"), FLinearColor::White,
             Margin, Margin + 96.0f * UiScale, Font, 0.9f * UiScale, false);
@@ -173,6 +331,10 @@ void ASandHUD::DrawHUD()
     const FLinearColor ReticleColor(1.0f, 1.0f, 1.0f, 0.35f);
     DrawLine(CentreX - 5.0f, CentreY, CentreX + 5.0f, CentreY, ReticleColor, 1.0f);
     DrawLine(CentreX, CentreY - 5.0f, CentreX, CentreY + 5.0f, ReticleColor, 1.0f);
+    if (UsesMobileControls() && Excavator && !Machine)
+    {
+        DrawMobileControls();
+    }
 }
 
 void ASandHUD::NotifyHitBoxClick(FName BoxName)

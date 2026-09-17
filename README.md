@@ -1,5 +1,11 @@
 # Dig It Up
 
+## Android excavator first playable
+
+The Android version opens directly in the excavator with one left drive stick
+and three right-side boom, stick and bucket levers. See
+[Android controls, Windows touch preview and device validation](Docs/AndroidExcavator.md).
+
 ## Excavation research lab (2026-09-13)
 
 `PlayExcavationLab.cmd` opens the experimental dry-sand material, finite traction

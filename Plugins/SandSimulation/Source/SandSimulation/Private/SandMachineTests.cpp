@@ -69,7 +69,7 @@ bool FSandChainPathTest::RunTest(const FString&)
 {
     using namespace Sand::Machine;
     // Geometry and derivative continuity prevent a blade teleporting at a wrap.
-    for(float S : {0.0f,Run,Run+PI*Radius,2*Run+PI*Radius,Loop})
+    for(float S : {0.0f,Run,Run+PI*ChainRadius,2*Run+PI*ChainRadius,Loop})
     {
         FVector3f A,B,TA,TB;
         ChainPose(S-1.e-5f,A,TA); ChainPose(S+1.e-5f,B,TB);

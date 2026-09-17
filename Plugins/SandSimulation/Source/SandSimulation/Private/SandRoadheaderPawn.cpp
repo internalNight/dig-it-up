@@ -24,7 +24,7 @@
 
 using namespace Sand::Machine;
 
-float ASandRoadheaderPawn::ConveyorLoop() const { return 2*(ConveyorFront-Rear)+2*PI*Radius; }
+float ASandRoadheaderPawn::ConveyorLoop() const { return 2*(ConveyorFront-Rear)+2*PI*ChainRadius; }
 
 float ASandRoadheaderPawn::GetFeedFraction() const
 {
@@ -497,7 +497,7 @@ void ASandRoadheaderPawn::BuildPhysicalTool(Sand::MPM::FToolColliderState& Tool,
             const float A=-PI/2+(I+.5f)*PI/6;
             const float Sign=End==0?1.f:-1.f;
             const float CX=End==0?ConveyorFront:Rear;
-            auto* Guard=Box(FVector3f(CX+Sign*.13f*FMath::Cos(A),0,Top-Radius+.13f*FMath::Sin(A)),FVector3f(.038f,ConveyorWallY,.015f));
+            auto* Guard=Box(FVector3f(CX+Sign*.13f*FMath::Cos(A),0,Top-ChainRadius+.13f*FMath::Sin(A)),FVector3f(.038f,ConveyorWallY,.015f));
             Guard->AxisX=Rotation.RotateVector(FVector3f(-Sign*FMath::Sin(A),0,FMath::Cos(A)));
             Guard->AxisY=Rotation.GetAxisY();
             Guard->AxisZ=FVector3f::CrossProduct(Guard->AxisX,Guard->AxisY);
@@ -514,10 +514,10 @@ void ASandRoadheaderPawn::BuildPhysicalTool(Sand::MPM::FToolColliderState& Tool,
         Lower->Motion=4; Lower->MotionRotation=Rotation; Lower->Speed=ChainSpeed; Lower->ChainDriveRatio=1;
         *Lower=SampleMachineCollider(*Lower,Seconds);
         for(float X : {Rear,ConveyorFront}) {
-            auto* Roller=Box(FVector3f(X,0,Top-Radius),FVector3f(Radius,BeltHalfWidth,Radius));
+            auto* Roller=Box(FVector3f(X,0,Top-ChainRadius),FVector3f(ChainRadius,BeltHalfWidth,ChainRadius));
             Roller->Shape=1; Roller->Motion=3; Roller->MotionOrigin=Origin; Roller->MotionRotation=Rotation;
-            Roller->RotorCenter=FVector3f(X,0,Top-Radius); Roller->RotorOffset=FVector3f::ZeroVector;
-            Roller->Phase=RollerAngle; Roller->Speed=-ChainSpeed/Radius; Roller->ChainDriveRatio=-1/Radius;
+            Roller->RotorCenter=FVector3f(X,0,Top-ChainRadius); Roller->RotorOffset=FVector3f::ZeroVector;
+            Roller->Phase=RollerAngle; Roller->Speed=-ChainSpeed/ChainRadius; Roller->ChainDriveRatio=-1/ChainRadius;
             *Roller=SampleMachineCollider(*Roller,Seconds);
         }
     }
@@ -646,7 +646,7 @@ void ASandRoadheaderPawn::CompletePhysicalStep(const Sand::MPM::FToolInteraction
     // Advance angles using exactly the speed submitted to the completed GPU step.
     DrumAngle=FMath::Fmod(DrumAngle-DrumOmega*Dt,2*PI);
     ChainDistance=FMath::Fmod(ChainDistance+ChainSpeed*Dt,ConveyorLoop());
-    RollerAngle=FMath::Fmod(RollerAngle-ChainSpeed*Dt/Radius,2*PI);
+    RollerAngle=FMath::Fmod(RollerAngle-ChainSpeed*Dt/ChainRadius,2*PI);
     // Low-speed, high-torque geared drives. An anti-rollback clutch prevents
     // uncommanded reversal under overload; excess load can still stall the drum.
     if(StopAtSeconds>=0 && PhysicalTime>=StopAtSeconds) { bRunning=false; StopAtSeconds=-1; }

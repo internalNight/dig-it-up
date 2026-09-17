@@ -1,7 +1,8 @@
-#include "SandBearing.h"
 #include "SandExcavatorPawn.h"
+#include "SandBearing.h"
 #include "SandTraction.h"
 #include "SandRoadheaderPawn.h"
+#include "SandHUD.h"
 
 #include "Camera/CameraComponent.h"
 #include "Components/BoxComponent.h"
@@ -376,6 +377,14 @@ void ASandExcavatorPawn::Tick(const float DeltaSeconds)
             (PlayerController->IsInputKeyDown(EKeys::T) ? 1.0f : 0.0f) -
             (PlayerController->IsInputKeyDown(EKeys::G) ? 1.0f : 0.0f);
         bBrake = PlayerController->IsInputKeyDown(EKeys::SpaceBar);
+        if (ASandHUD* HUD = Cast<ASandHUD>(PlayerController->GetHUD()))
+        {
+            if (HUD->UsesMobileControls() && !Cast<ASandRoadheaderPawn>(this))
+            {
+                HUD->PollMobileControls();
+                HUD->GetMobileControls(Throttle, Steering, BoomInput, StickInput, BucketInput);
+            }
+        }
     }
 
     if (const auto* Machine=Cast<ASandRoadheaderPawn>(this))

@@ -163,15 +163,27 @@ void ASandPreviewGameMode::BeginPlay()
     {
         PlayerController->bShowMouseCursor=true;
         PlayerController->bEnableClickEvents=true;
+        PlayerController->bEnableTouchEvents=true;
         PlayerController->SetInputMode(FInputModeGameAndUI());
+#if PLATFORM_ANDROID
+        const bool bTouchExcavator = true;
+#else
+        const bool bTouchExcavator = FParse::Param(FCommandLine::Get(), TEXT("SandTouchPreview"));
+#endif
+        if (bTouchExcavator)
+        {
+            // This game draws its own left stick and three independent levers.
+            PlayerController->ActivateTouchInterface(nullptr);
+            SelectVehicle(false);
+        }
         const bool bRoad=FParse::Param(FCommandLine::Get(),TEXT("SandRoadheader")) || FParse::Param(FCommandLine::Get(),TEXT("SandRoadheaderBench"));
-        if(bRoad) SelectVehicle(true);
-        else if(FParse::Param(FCommandLine::Get(),TEXT("SandExcavator")) ||
+        if(!bTouchExcavator && bRoad) SelectVehicle(true);
+        else if(!bTouchExcavator && (FParse::Param(FCommandLine::Get(),TEXT("SandExcavator")) ||
             FParse::Param(FCommandLine::Get(),TEXT("SandAutopilot")) ||
             FParse::Param(FCommandLine::Get(),TEXT("SandVictoryTest")) ||
             FParse::Param(FCommandLine::Get(),TEXT("SandBoundaryTest")) ||
             FParse::Param(FCommandLine::Get(),TEXT("SandBoomRaiseTest")) ||
-            FParse::Param(FCommandLine::Get(),TEXT("SandSlopeCoastTest"))) SelectVehicle(false);
+            FParse::Param(FCommandLine::Get(),TEXT("SandSlopeCoastTest")))) SelectVehicle(false);
     }
 
 }

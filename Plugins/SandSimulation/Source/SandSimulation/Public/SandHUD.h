@@ -12,8 +12,26 @@ class SANDSIMULATION_API ASandHUD final : public AHUD
 public:
     virtual void DrawHUD() override;
     virtual void NotifyHitBoxClick(FName BoxName) override;
+    bool UsesMobileControls() const;
+    void PollMobileControls();
+    void GetMobileControls(float& Throttle, float& Steering, float& Boom,
+        float& Stick, float& Bucket) const;
 
 private:
+    void DrawMobileControls();
+    struct FTouchCapture
+    {
+        bool bDown = false;
+        int8 Control = -1; // 0: drive, 1: boom, 2: stick, 3: bucket
+        FVector2D Start = FVector2D::ZeroVector;
+        FVector2D Position = FVector2D::ZeroVector;
+    };
+    FTouchCapture Touches[10];
+    FVector2D DriveInput = FVector2D::ZeroVector;
+    float LeverInput[3] = {0.0f, 0.0f, 0.0f};
+    FVector2D DriveOrigin = FVector2D::ZeroVector;
+    bool bDriveActive = false;
+
     // Canvas requires a live UFont even when a Slate composite font is supplied.
     UPROPERTY(Transient)
     TObjectPtr<class UFont> VictoryFont;

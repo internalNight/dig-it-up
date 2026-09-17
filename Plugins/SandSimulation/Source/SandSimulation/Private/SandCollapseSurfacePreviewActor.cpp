@@ -58,6 +58,13 @@ void ASandCollapseSurfacePreviewActor::BeginPlay()
     UE_LOG(LogTemp,Display,TEXT("SOIL_CONFIG phiDeg=%.3f cohesionPa=%.3f toolMu=%.3f dampingPerSec=%.3f dilationActive=%d dilationDeg=%.3f"),
         Material.InternalFrictionAngleDegrees,Material.CohesionPa,Material.ToolFrictionCoefficient,Material.VelocityDampingPerSecond,Material.bObjectiveMaterial,Material.DilationAngleDegrees);
     SimulationState = Sand::MPM::CreateRuntimeSandboxSimulation(Material);
+    if (SimulationState->CellSize >= 0.125f)
+    {
+        // Mobile physics uses fewer particles; match the surface kernel and
+        // reconstruction grid to that spacing to avoid costly empty voxels.
+        VoxelSizeMeters = 0.08f;
+        KernelRadiusMeters = 0.16f;
+    }
     // Acceptance fixture: a sloping corner excavation with two intact bottom layers.
     // Removed material is stacked in the upper air region, conserving mass.
     if (FParse::Param(FCommandLine::Get(), TEXT("SandVictoryTest")))

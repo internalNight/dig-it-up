@@ -312,7 +312,11 @@ TSharedRef<FRuntimeSimulationState, ESPMode::ThreadSafe> CreateRuntimeSandboxSim
     State->CellSize = 0.05f;
     FString Quality;
     FParse::Value(FCommandLine::Get(), TEXT("SandQuality="), Quality);
+#if PLATFORM_ANDROID
+    if (Quality.IsEmpty()) Quality = TEXT("Mobile");
+#endif
     if (Quality == TEXT("Legacy")) State->CellSize = 0.0625f;
+    if (Quality == TEXT("Mobile")) State->CellSize = 0.125f;
     if (Quality == TEXT("Fine")) State->CellSize = 0.03125f;
     if (Quality == TEXT("Ultra")) State->CellSize = 0.025f;
     const bool bBench = FParse::Param(FCommandLine::Get(), TEXT("SandRoadheaderBench"));
@@ -420,11 +424,11 @@ FToolOrientedBoxState SampleMachineCollider(const FToolOrientedBoxState& C, floa
         Z=FVector3f::CrossProduct(X,Y);
         R.LinearVelocityMetersPerSecond=C.MotionRotation.RotateVector(X*C.Speed);
         // Angular velocity is nonzero only on the semicircular sprockets.
-        const float PathRun=C.ChainFront-Sand::Machine::Rear, PathLoop=2*PathRun+2*PI*Sand::Machine::Radius;
+        const float PathRun=C.ChainFront-Sand::Machine::Rear, PathLoop=2*PathRun+2*PI*Sand::Machine::ChainRadius;
         float S=FMath::Fmod(C.Phase+C.Speed*Time,PathLoop);
         if(S<0) S+=PathLoop;
-        bool Turn=(S>PathRun && S<PathRun+PI*Sand::Machine::Radius) || S>2*PathRun+PI*Sand::Machine::Radius;
-        R.AngularVelocityRadiansPerSecond=C.MotionRotation.RotateVector(Y*(Turn ? -C.Speed/Sand::Machine::Radius : 0));
+        bool Turn=(S>PathRun && S<PathRun+PI*Sand::Machine::ChainRadius) || S>2*PathRun+PI*Sand::Machine::ChainRadius;
+        R.AngularVelocityRadiansPerSecond=C.MotionRotation.RotateVector(Y*(Turn ? -C.Speed/Sand::Machine::ChainRadius : 0));
         const FVector3f Offset=-C.SurfaceOffset*Z;
         P+=Offset;
         R.LinearVelocityMetersPerSecond+=FVector3f::CrossProduct(R.AngularVelocityRadiansPerSecond,C.MotionRotation.RotateVector(Offset));
