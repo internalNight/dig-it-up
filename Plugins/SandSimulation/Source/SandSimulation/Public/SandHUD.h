@@ -29,8 +29,6 @@ private:
     FTouchCapture Touches[10];
     FVector2D DriveInput = FVector2D::ZeroVector;
     float LeverInput[3] = {0.0f, 0.0f, 0.0f};
-    FVector2D DriveOrigin = FVector2D::ZeroVector;
-    bool bDriveActive = false;
 
     // Canvas requires a live UFont even when a Slate composite font is supplied.
     UPROPERTY(Transient)

@@ -209,6 +209,14 @@ void ASandPreviewGameMode::SelectVehicle(bool bRoadheader)
     PC->Possess(Pawn);
     PC->bShowMouseCursor=false;
     PC->SetInputMode(FInputModeGameOnly());
+#if !PLATFORM_ANDROID
+    if (FParse::Param(FCommandLine::Get(), TEXT("SandTouchPreview")))
+    {
+        // Keep the pointer available when a desktop mouse emulates one touch.
+        PC->bShowMouseCursor = true;
+        PC->SetInputMode(FInputModeGameAndUI());
+    }
+#endif
     bSelectingVehicle=false;
     UE_LOG(LogTemp,Display,TEXT("Selected vehicle: %s"),bRoadheader?TEXT("Roadheader"):TEXT("Excavator"));
 

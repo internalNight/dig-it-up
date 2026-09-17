@@ -9,7 +9,8 @@ if (!(Test-Path -LiteralPath $editor)) { throw "UnrealEditor.exe not found: $edi
 $arguments = @(
     '"' + (Join-Path $projectRoot 'SandExcavator.uproject') + '"',
     '-game', '-d3d12', '-sm6', '-windowed', '-ResX=1600', '-ResY=900',
-    '-SandTouchPreview', '-SandQuality=Mobile', '-faketouches'
+    '-SandTouchPreview', '-SandQuality=Mobile', '-faketouches',
+    '-ini:Input:[/Script/Engine.InputSettings]:bUseMouseForTouch=True'
 )
 if ($Capture) {
     $started = Get-Date

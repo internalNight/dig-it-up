@@ -14,6 +14,14 @@
 #include "Misc/CommandLine.h"
 #include "Misc/Parse.h"
 
+namespace
+{
+FVector2D FixedDriveBase(const float Width, const float Height)
+{
+    return FVector2D(0.16f * Width, 0.75f * Height);
+}
+}
+
 bool ASandHUD::UsesMobileControls() const
 {
 #if PLATFORM_ANDROID
@@ -27,7 +35,6 @@ void ASandHUD::PollMobileControls()
 {
     DriveInput = FVector2D::ZeroVector;
     LeverInput[0] = LeverInput[1] = LeverInput[2] = 0.0f;
-    bDriveActive = false;
     if (!UsesMobileControls() || !PlayerOwner)
     {
         return;
@@ -42,6 +49,7 @@ void ASandHUD::PollMobileControls()
     const float ScreenW = static_cast<float>(Width);
     const float ScreenH = static_cast<float>(Height);
     const float Radius = 0.15f * ScreenH;
+    const FVector2D DriveBase = FixedDriveBase(ScreenW, ScreenH);
     const float LeverTravel = 0.17f * ScreenH;
     const float LeverX[3] = {0.67f * ScreenW, 0.79f * ScreenW, 0.91f * ScreenW};
 
@@ -64,7 +72,7 @@ void ASandHUD::PollMobileControls()
             Capture.bDown = true;
             Capture.Start = Point;
             Capture.Control = -1;
-            if (X < 0.34f * ScreenW && Y > 0.48f * ScreenH)
+            if (FVector2D::Distance(Point, DriveBase) <= 1.35f * Radius)
             {
                 Capture.Control = 0;
             }
@@ -101,9 +109,7 @@ void ASandHUD::PollMobileControls()
         }
         if (Capture.Control == 0)
         {
-            bDriveActive = true;
-            DriveOrigin = Capture.Start;
-            const FVector2D Drag = (Capture.Position - Capture.Start) / Radius;
+            const FVector2D Drag = (Capture.Position - DriveBase) / Radius;
             DriveInput = Drag.GetClampedToMaxSize(1.0);
             DriveInput.Y = -DriveInput.Y;
             if (DriveInput.Size() < 0.07)
@@ -134,7 +140,7 @@ void ASandHUD::DrawMobileControls()
     const float W = Canvas->SizeX, H = Canvas->SizeY;
     const float S = FMath::Clamp(H / 720.0f, 0.8f, 1.5f);
     const float Radius = 0.15f * H;
-    const FVector2D Base = bDriveActive ? DriveOrigin : FVector2D(0.16f * W, 0.75f * H);
+    const FVector2D Base = FixedDriveBase(W, H);
     const FVector2D Knob = Base + FVector2D(DriveInput.X, -DriveInput.Y) * Radius;
     const FLinearColor Amber(1.0f, 0.72f, 0.16f, 0.9f);
     const FLinearColor White(0.88f, 0.93f, 1.0f, 0.9f);

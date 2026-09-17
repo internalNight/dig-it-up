@@ -9,7 +9,9 @@ so the player can drive and operate multiple joints together.
 
 The desktop keyboard controls are unchanged. Run `PlayMobileExcavatorPreview.cmd`
 to check the mobile layout at 1600 x 900 on Windows. The mouse emulates one
-finger; use an Android device to test simultaneous touches. Run
+finger. The stick base stays anchored in the lower-left corner; drag its knob
+from the fixed centre to drive and steer. Use an Android device to test
+simultaneous touches. Run
 `Tools/PlayMobileExcavatorPreview.ps1 -Capture` to make an automatic screenshot
 at `Artifacts/SandSurfaceUEPreview.png`.
 
@@ -33,16 +35,20 @@ physics resolution. The user tested the previous version on an Honor Magic6
 the mobile sky rendered a warning.
 Version 1.1 enlarges the left stick by about 30%, removes its rectangular
 backdrop, and does not spawn the unsupported SkyAtmosphere actor on Android.
+Version 1.2 anchors the stick base and directional centre and limits touch
+capture to the area around the stick. The desktop preview enables mouse-to-touch
+input for one-finger interaction.
 
 On the current development machine, UE 5.8.2 recognizes Android API 36,
 Build Tools 36.0.0, CMake 3.22.1 and NDK 27.2.12479018 (r27c). The Android
 arm64 C++ target compiled and `RunUAT BuildCookRun` completed an Android ASTC
 Development cook, package and archive on 17 September 2026. The current test
-build is `Artifacts/AndroidMobileFixFinal/SandExcavator-arm64.apk` (version
-1.1, code 2, about 160 MB). `bPackageDataInsideApk=True` embeds
+build is `Artifacts/AndroidFixedJoystick/SandExcavator-arm64.apk` (version
+1.2, code 3, about 160 MB). `bPackageDataInsideApk=True` embeds
 `assets/main.obb.png`, so this APK can be installed as one file. The archive
 also contains `Install_SandExcavator-arm64.bat` for installation through ADB.
-The older `Artifacts/AndroidSingleApk/` package is version 1.0. The earlier
+The older `Artifacts/AndroidMobileFixFinal/` package is version 1.1, and
+`Artifacts/AndroidSingleApk/` is version 1.0. The earlier
 `Artifacts/AndroidPackage/` build keeps its content in a separate OBB and
 must be installed with its script.
 
@@ -57,3 +63,6 @@ all 4 supports and a 154.2 cm chassis height from 2 to 20 seconds; an
 eight-second digging run retained all 4 supports. These desktop runs cannot
 establish the revised APK's frame rate, touch behavior or bearing performance
 on the Honor Magic6. Check those on the device before calling this fix done.
+The 1.2 Windows preview rendered the anchored stick at 1600 x 900. This machine
+has no installed Android emulator image, and automated mouse injection could
+not focus the game window, so a live one-finger drag was not verified here.
