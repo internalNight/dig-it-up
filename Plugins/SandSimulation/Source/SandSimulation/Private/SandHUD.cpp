@@ -41,7 +41,7 @@ void ASandHUD::PollMobileControls()
     }
     const float ScreenW = static_cast<float>(Width);
     const float ScreenH = static_cast<float>(Height);
-    const float Radius = 0.115f * ScreenH;
+    const float Radius = 0.15f * ScreenH;
     const float LeverTravel = 0.17f * ScreenH;
     const float LeverX[3] = {0.67f * ScreenW, 0.79f * ScreenW, 0.91f * ScreenW};
 
@@ -133,13 +133,11 @@ void ASandHUD::DrawMobileControls()
 {
     const float W = Canvas->SizeX, H = Canvas->SizeY;
     const float S = FMath::Clamp(H / 720.0f, 0.8f, 1.5f);
-    const float Radius = 0.115f * H;
+    const float Radius = 0.15f * H;
     const FVector2D Base = bDriveActive ? DriveOrigin : FVector2D(0.16f * W, 0.75f * H);
     const FVector2D Knob = Base + FVector2D(DriveInput.X, -DriveInput.Y) * Radius;
     const FLinearColor Amber(1.0f, 0.72f, 0.16f, 0.9f);
     const FLinearColor White(0.88f, 0.93f, 1.0f, 0.9f);
-    DrawRect(FLinearColor(0.02f, 0.04f, 0.06f, 0.42f), Base.X - Radius * 1.25f,
-        Base.Y - Radius * 1.3f, Radius * 2.5f, Radius * 2.7f);
     constexpr int32 Segments = 32;
     for (int32 Part = 0; Part < Segments; ++Part)
     {
@@ -148,7 +146,7 @@ void ASandHUD::DrawMobileControls()
         DrawLine(Base.X + FMath::Cos(A) * Radius, Base.Y + FMath::Sin(A) * Radius,
             Base.X + FMath::Cos(B) * Radius, Base.Y + FMath::Sin(B) * Radius, White, 2.5f * S);
     }
-    DrawRect(Amber, Knob.X - 15.0f * S, Knob.Y - 15.0f * S, 30.0f * S, 30.0f * S);
+    DrawRect(Amber, Knob.X - 20.0f * S, Knob.Y - 20.0f * S, 40.0f * S, 40.0f * S);
     DrawText(TEXT("DRIVE / STEER"), White, Base.X - 48.0f * S,
         FMath::Min(H - 29.0f * S, Base.Y + Radius + 13.0f * S), GEngine->GetSmallFont(), S);
 

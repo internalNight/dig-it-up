@@ -58,12 +58,11 @@ void ASandCollapseSurfacePreviewActor::BeginPlay()
     UE_LOG(LogTemp,Display,TEXT("SOIL_CONFIG phiDeg=%.3f cohesionPa=%.3f toolMu=%.3f dampingPerSec=%.3f dilationActive=%d dilationDeg=%.3f"),
         Material.InternalFrictionAngleDegrees,Material.CohesionPa,Material.ToolFrictionCoefficient,Material.VelocityDampingPerSecond,Material.bObjectiveMaterial,Material.DilationAngleDegrees);
     SimulationState = Sand::MPM::CreateRuntimeSandboxSimulation(Material);
-    if (SimulationState->CellSize >= 0.125f)
+    if (SimulationState->CellSize >= 0.099f)
     {
-        // Mobile physics uses fewer particles; match the surface kernel and
-        // reconstruction grid to that spacing to avoid costly empty voxels.
-        VoxelSizeMeters = 0.08f;
-        KernelRadiusMeters = 0.16f;
+        // Match the mobile surface kernel to the coarser physical grid.
+        VoxelSizeMeters = 0.07f;
+        KernelRadiusMeters = 0.14f;
     }
     // Acceptance fixture: a sloping corner excavation with two intact bottom layers.
     // Removed material is stacked in the upper air region, conserving mass.
@@ -169,10 +168,10 @@ void ASandCollapseSurfacePreviewActor::Tick(const float DeltaSeconds)
 
     if (!Excavator.IsValid())
     {
-        for (TActorIterator<ASandExcavatorPawn> It(GetWorld()); It; ++It)
+        TActorIterator<ASandExcavatorPawn> It(GetWorld());
+        if (It)
         {
             Excavator = *It;
-            break;
         }
     }
     Sand::MPM::FToolColliderState Tool;
@@ -447,7 +446,12 @@ void ASandCollapseSurfacePreviewActor::Tick(const float DeltaSeconds)
                 }
                 if (WeakExcavator.IsValid())
                 {
-                    WeakExcavator->UpdateSandSupportSurface(SupportPositions,FParse::Param(FCommandLine::Get(),TEXT("SandDirectReaction"))?50*WeakThis->SimulationState->CellSize:2.625f);
+                    const float CellSizeCm = 100.0f * WeakThis->SimulationState->CellSize;
+                    const float SurfaceRadiusCm = FParse::Param(FCommandLine::Get(), TEXT("SandDirectReaction"))
+                        ? 0.5f * CellSizeCm
+                        : (CellSizeCm >= 9.5f ? 0.5f * CellSizeCm - 0.5f : 2.625f);
+                    WeakExcavator->UpdateSandSupportSurface(
+                        SupportPositions, CellSizeCm, SurfaceRadiusCm);
                 }
                 WeakThis->GenerateSurfaceFromParticlePositions(
                     MoveTemp(Positions),

@@ -140,7 +140,11 @@ void ASandPreviewGameMode::BeginPlay()
     // The lightweight Entry map has no authored environment. Spawn a real
     // atmosphere and movable skylight so the playable build has an outdoor
     // horizon instead of a black void, without loading a heavyweight level.
+#if !PLATFORM_ANDROID
+    // Mobile SkyAtmosphere requires a sky mesh/material that this procedural
+    // level does not provide. Avoid the on-screen mobile renderer error.
     World->SpawnActor<ASkyAtmosphere>(FVector::ZeroVector, FRotator::ZeroRotator);
+#endif
     ASkyLight* SkyLight = World->SpawnActor<ASkyLight>(
         FVector(0.0, 0.0, 250.0), FRotator::ZeroRotator);
     SkyLight->GetLightComponent()->SetMobility(EComponentMobility::Movable);

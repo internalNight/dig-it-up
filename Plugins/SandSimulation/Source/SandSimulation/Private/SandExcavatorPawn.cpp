@@ -3,6 +3,7 @@
 #include "SandTraction.h"
 #include "SandRoadheaderPawn.h"
 #include "SandHUD.h"
+#include "SandLevelSettings.h"
 
 #include "Camera/CameraComponent.h"
 #include "Components/BoxComponent.h"
@@ -513,7 +514,8 @@ void ASandExcavatorPawn::UpdateVisualJoints()
 }
 
 void ASandExcavatorPawn::UpdateSandSupportSurface(
-    const TArray<FVector3f>& ParticlePositionsMeters, float SurfaceRadiusCm)
+    const TArray<FVector3f>& ParticlePositionsMeters,
+    const float CellSizeCm, const float SurfaceRadiusCm)
 {
     if (ParticlePositionsMeters.IsEmpty())
     {
@@ -527,13 +529,18 @@ void ASandExcavatorPawn::UpdateSandSupportSurface(
         FVector2f(15.0f, 14.0f),
         FVector2f(-15.0f, 14.0f)
     };
-    // A narrow patch cannot bridge a small trench by resting on its far bank.
-    constexpr float QueryRadiusCentimeters = 10.5f;
+    // Coarse mobile particles need a patch the size of the tread's bearing
+    // region. Keep the smaller footprint used by the desktop simulations.
+    const float QueryRadiusCentimeters = FMath::Max(10.5f, 1.5f * CellSizeCm);
+    bUseParticleBearingSupport = CellSizeCm >= 9.5f;
     // The density isosurface lies below particle-centre + half-spacing.
     // Match it and allow a shallow tread indentation instead of a visible gap.
     const float ParticleSurfaceRadiusCentimeters = SurfaceRadiusCm;
     constexpr int32 TopParticleCount = 8;
-    const float MaximumGroundHeight = ChassisBody->GetComponentLocation().Z + 22.0f;
+    const float MaximumGroundHeight = bUseParticleBearingSupport
+        ? FMath::Max(static_cast<float>(ChassisBody->GetComponentLocation().Z + 22.0f),
+            GetDefault<USandLevelSettings>()->SandDepthMeters * 100.0f + CellSizeCm)
+        : static_cast<float>(ChassisBody->GetComponentLocation().Z + 22.0f);
     FVector SampleForward = GetActorForwardVector();
     SampleForward.Z = 0.0;
     SampleForward.Normalize();
@@ -591,14 +598,30 @@ void ASandExcavatorPawn::UpdateSandSupportSurface(
         float MeasuredHeight = ValidHeightCount > 0
             ? FMath::Max(0.0f, HeightSum / ValidHeightCount + ParticleSurfaceRadiusCentimeters)
             : 0.0f;
-        if(FParse::Param(FCommandLine::Get(),TEXT("SandDenseSupport"))) {
-            const bool HasBulk=Sand::Machine::ConnectedBearingHeight(ColumnHeights,2*SurfaceRadiusCm,PI*FMath::Square(QueryRadiusCentimeters),MeasuredHeight);
-            ValidHeightCount=HasBulk?TopParticleCount:0;
+        if (bUseParticleBearingSupport || FParse::Param(FCommandLine::Get(), TEXT("SandDenseSupport")))
+        {
+            float ConnectedHeight = 0.0f;
+            const float BearingSpacingCm = bUseParticleBearingSupport
+                ? CellSizeCm : 2.0f * SurfaceRadiusCm;
+            const bool bHasBulk = Sand::Machine::ConnectedBearingHeight(
+                ColumnHeights, BearingSpacingCm,
+                PI * FMath::Square(QueryRadiusCentimeters), ConnectedHeight);
+            if (!bHasBulk)
+            {
+                ValidHeightCount = 0;
+            }
+            else
+            {
+                // A few airborne grains cannot raise the track above the
+                // floor-connected material beneath the contact patch.
+                MeasuredHeight = FMath::Min(MeasuredHeight, ConnectedHeight + SurfaceRadiusCm);
+            }
         }
+        bParticleSupportSampleValid[SampleIndex] = ValidHeightCount >= 4;
         ParticleSupportCeilingsCentimeters[SampleIndex] = MeasuredHeight + 1.0f;
         if(FParse::Param(FCommandLine::Get(),TEXT("SandDirectReaction"))) {
             // Rendering is not a bearing test: use the physical material samples.
-            bSandSupportSampleValid[SampleIndex]=ValidHeightCount>=4;
+            bSandSupportSampleValid[SampleIndex]=bParticleSupportSampleValid[SampleIndex];
             SandSupportHeightsCentimeters[SampleIndex]=FMath::Max(0.f,MeasuredHeight-.5f);
         }
     }
@@ -619,15 +642,22 @@ void ASandExcavatorPawn::UpdateVisibleSandSupport(
         float Height;
         const float Ceiling = FMath::Min(
             ParticleSupportCeilingsCentimeters[SampleIndex], static_cast<float>(Origin.Z + 22.0));
-        bSandSupportSampleValid[SampleIndex] = SampleVisibleSandHeight(
+        const bool bVisibleSample = SampleVisibleSandHeight(
             Vertices, Indices, FVector2D(Sample.X, Sample.Y), Ceiling, Height);
+        bSandSupportSampleValid[SampleIndex] = bUseParticleBearingSupport
+            ? bParticleSupportSampleValid[SampleIndex] : bVisibleSample;
+        if (!bSandSupportSampleValid[SampleIndex])
+        {
+            continue;
+        }
         // The density filter erodes the surface inside a rigid track's void.
         // Following that void without a bearing envelope makes a parked track
         // excavate itself downward indefinitely. Limit visual sinkage to 3 cm
         // below the surrounding non-carried support patch (which itself moves
         // down when terrain is excavated; this is not an absolute height clamp).
         const float BearingFloor = FMath::Max(0.0f, ParticleSupportCeilingsCentimeters[SampleIndex] - 4.0f);
-        const float Target = FMath::Max(BearingFloor, Height - 0.5f);
+        const float Target = bVisibleSample
+            ? FMath::Max(BearingFloor, Height - 0.5f) : BearingFloor;
         const float Blend = Target < SandSupportHeightsCentimeters[SampleIndex] - 1.0f ? 0.22f : 0.12f;
         SandSupportHeightsCentimeters[SampleIndex] = bHasSandSupportSamples
             ? FMath::Lerp(SandSupportHeightsCentimeters[SampleIndex], Target, Blend) : Target;

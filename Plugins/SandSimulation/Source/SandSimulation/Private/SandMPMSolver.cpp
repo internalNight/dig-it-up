@@ -316,7 +316,7 @@ TSharedRef<FRuntimeSimulationState, ESPMode::ThreadSafe> CreateRuntimeSandboxSim
     if (Quality.IsEmpty()) Quality = TEXT("Mobile");
 #endif
     if (Quality == TEXT("Legacy")) State->CellSize = 0.0625f;
-    if (Quality == TEXT("Mobile")) State->CellSize = 0.125f;
+    if (Quality == TEXT("Mobile")) State->CellSize = 0.10f;
     if (Quality == TEXT("Fine")) State->CellSize = 0.03125f;
     if (Quality == TEXT("Ultra")) State->CellSize = 0.025f;
     const bool bBench = FParse::Param(FCommandLine::Get(), TEXT("SandRoadheaderBench"));
