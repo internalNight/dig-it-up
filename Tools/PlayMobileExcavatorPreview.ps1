@@ -11,6 +11,7 @@ $arguments = @(
     '"' + (Join-Path $projectRoot 'SandExcavator.uproject') + '"',
     '-game', '-d3d12', '-sm6', '-windowed', '-ResX=1600', '-ResY=900',
     '-SandTouchPreview', '-SandQuality=Mobile', '-faketouches',
+    '-DefaultViewportMouseCaptureMode=NoCapture',
     '-ini:Input:[/Script/Engine.InputSettings]:bUseMouseForTouch=True'
 )
 if ($Performance) { $arguments += '-SandPerfHud' }

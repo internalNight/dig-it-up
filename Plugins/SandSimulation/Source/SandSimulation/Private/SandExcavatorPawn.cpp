@@ -384,6 +384,15 @@ void ASandExcavatorPawn::Tick(const float DeltaSeconds)
             {
                 HUD->PollMobileControls();
                 HUD->GetMobileControls(Throttle, Steering, BoomInput, StickInput, BucketInput);
+                const FVector2D LookDelta = HUD->GetMobileLookDelta();
+                if (!LookDelta.IsNearlyZero() && CameraBoom)
+                {
+                    FRotator Orbit = CameraBoom->GetRelativeRotation();
+                    Orbit.Yaw = FRotator::NormalizeAxis(Orbit.Yaw + LookDelta.X * 180.0f);
+                    Orbit.Pitch = FMath::Clamp(Orbit.Pitch + LookDelta.Y * 130.0f, -80.0f, -10.0f);
+                    Orbit.Roll = 0.0f;
+                    CameraBoom->SetRelativeRotation(Orbit);
+                }
             }
         }
     }

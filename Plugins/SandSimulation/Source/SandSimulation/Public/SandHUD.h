@@ -16,6 +16,7 @@ public:
     void PollMobileControls();
     void GetMobileControls(float& Throttle, float& Steering, float& Boom,
         float& Stick, float& Bucket) const;
+    FVector2D GetMobileLookDelta() const { return LookDelta; }
 
 private:
     void DrawMobileControls();
@@ -23,12 +24,14 @@ private:
     struct FTouchCapture
     {
         bool bDown = false;
-        int8 Control = -1; // 0: drive, 1: boom, 2: stick, 3: bucket
+        int8 Control = -1; // 0: drive, 1: boom, 2: stick, 3: bucket, 4: camera
         FVector2D Start = FVector2D::ZeroVector;
         FVector2D Position = FVector2D::ZeroVector;
     };
     FTouchCapture Touches[10];
     FVector2D DriveInput = FVector2D::ZeroVector;
+    FVector2D LookDelta = FVector2D::ZeroVector; // fraction of viewport height this frame
+    bool bDesktopTouchInputConfigured = false;
     float LeverInput[3] = {0.0f, 0.0f, 0.0f};
     TWeakObjectPtr<class ASandCollapseSurfacePreviewActor> PerformanceActor;
     double PerformanceWindowStartSeconds = 0.0;

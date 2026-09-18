@@ -37,11 +37,25 @@ bool ASandHUD::UsesMobileControls() const
 void ASandHUD::PollMobileControls()
 {
     DriveInput = FVector2D::ZeroVector;
+    LookDelta = FVector2D::ZeroVector;
     LeverInput[0] = LeverInput[1] = LeverInput[2] = 0.0f;
     if (!UsesMobileControls() || !PlayerOwner)
     {
         return;
     }
+#if !PLATFORM_ANDROID
+    if (!bDesktopTouchInputConfigured)
+    {
+        // The preview mouse should behave like a finger, not a captured
+        // first-person mouse that gets warped back to its starting point.
+        FInputModeGameAndUI TouchInputMode;
+        TouchInputMode.SetLockMouseToViewportBehavior(EMouseLockMode::DoNotLock);
+        TouchInputMode.SetHideCursorDuringCapture(false);
+        PlayerOwner->SetInputMode(TouchInputMode);
+        PlayerOwner->bShowMouseCursor = true;
+        bDesktopTouchInputConfigured = true;
+    }
+#endif
 
     int32 Width = 0, Height = 0;
     PlayerOwner->GetViewportSize(Width, Height);
@@ -90,6 +104,10 @@ void ASandHUD::PollMobileControls()
                     }
                 }
             }
+            if (Capture.Control < 0)
+            {
+                Capture.Control = 4;
+            }
             // One finger per control; the first finger keeps ownership.
             for (int32 Other = 0; Other < UE_ARRAY_COUNT(Touches); ++Other)
             {
@@ -100,6 +118,14 @@ void ASandHUD::PollMobileControls()
                     break;
                 }
             }
+        }
+        else if (Capture.Control == 4)
+        {
+            // Keep the touch's original role even when it crosses a control.
+            // Normalize by height so the same gesture feels similar on phones
+            // with different pixel resolutions and aspect ratios.
+            const FVector2D FrameDrag = (Point - Capture.Position) / ScreenH;
+            LookDelta += FrameDrag.GetClampedToMaxSize(0.25f);
         }
         Capture.Position = Point;
     }
@@ -120,7 +146,7 @@ void ASandHUD::PollMobileControls()
                 DriveInput = FVector2D::ZeroVector;
             }
         }
-        else
+        else if (Capture.Control <= 3)
         {
             float Value = FMath::Clamp((Capture.Start.Y - Capture.Position.Y) / LeverTravel, -1.0f, 1.0f);
             LeverInput[Capture.Control - 1] = FMath::Abs(Value) < 0.06f ? 0.0f : Value;

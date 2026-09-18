@@ -6,6 +6,10 @@ the boom, stick and bucket. A lever moved upward gives the same positive joint
 command as Q, R or T on the desktop. All four controls return to zero when
 released. Each finger remains assigned to the control where it first touched,
 so the player can drive and operate multiple joints together.
+Drag from an empty part of the screen to orbit the camera around the excavator.
+Horizontal motion turns the view; vertical motion changes its elevation within
+safe limits. The touch keeps its original role as it crosses another control,
+and only one finger owns the camera at a time. Releasing it stops camera motion.
 
 The desktop keyboard controls are unchanged. Run `PlayMobileExcavatorPreview.cmd`
 to check the mobile layout at 1600 x 900 on Windows. The mouse emulates one
@@ -46,16 +50,26 @@ while a GPU step is in flight. A Development Android build displays Game FPS,
 Sand Hz, Surface Hz, solver/readback time and surface-build time in the top-right.
 Wait five seconds after launch before reading these values. For the evidence
 and limitations, see `Docs/MobilePerformance.md`.
+Version 1.4 adds the camera gesture. The mobile and desktop touch preview use
+the same screen-height-normalized sensitivity. Check a free-area drag, each
+control drag, camera drag while driving, and crossing a control boundary on a
+real multitouch device; the mouse-based desktop preview can check one finger
+at a time. Its cursor stays visible and uncaptured for continuous dragging;
+Android touch input is unaffected.
+A Win64 mouse-to-touch smoke run confirmed that an empty-area drag rotates the
+camera, the fixed stick still drives, and the boom lever still moves. It cannot
+verify simultaneous fingers on the phone.
 
 On the current development machine, UE 5.8.2 recognizes Android API 36,
 Build Tools 36.0.0, CMake 3.22.1 and NDK 27.2.12479018 (r27c). The Android
 arm64 C++ target compiled and `RunUAT BuildCookRun` completed an Android ASTC
 Development cook, package and archive on 18 September 2026. The current test
-build is `Artifacts/AndroidPerformance13/SandExcavator-arm64.apk` (version
-1.3, code 4, about 160 MB). `bPackageDataInsideApk=True` embeds
+build is `Artifacts/AndroidCameraOrbit14/SandExcavator-arm64.apk` (version
+1.4, code 5, about 160 MB). `bPackageDataInsideApk=True` embeds
 `assets/main.obb.png`, so this APK can be installed as one file. The archive
 also contains `Install_SandExcavator-arm64.bat` for installation through ADB.
-The older `Artifacts/AndroidFixedJoystick/` package is version 1.2,
+The older `Artifacts/AndroidPerformance13/` package is version 1.3,
+`Artifacts/AndroidFixedJoystick/` is version 1.2,
 `Artifacts/AndroidMobileFixFinal/` is version 1.1, and
 `Artifacts/AndroidSingleApk/` is version 1.0. The earlier
 `Artifacts/AndroidPackage/` build keeps its content in a separate OBB and
