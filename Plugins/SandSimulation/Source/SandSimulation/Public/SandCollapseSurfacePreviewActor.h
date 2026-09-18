@@ -19,6 +19,9 @@ class SANDSIMULATION_API ASandCollapseSurfacePreviewActor final : public ASandSu
 public:
     ASandCollapseSurfacePreviewActor();
 
+    uint64 GetCompletedSimulationFrames() const { return CompletedSimulationFrames; }
+    float GetLastGpuStepMilliseconds() const { return LastGpuStepMilliseconds; }
+
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Sand|Preview", meta = (ClampMin = "0.1", ClampMax = "2.0"))
     float SimulationSpeed = 1.0f;
 
@@ -37,6 +40,8 @@ private:
     float SimulationAccumulatorSeconds = 0.0f;
     bool bSimulationStepInFlight = false;
     uint64 CompletedSimulationFrames = 0;
+    uint64 LastSurfaceSampleFrame = 0;
+    float LastGpuStepMilliseconds = 0.0f;
     FTransform PreviousBucketTransform;
     float ToolSampleElapsedSeconds = 0.0f;
     bool bHasPreviousBucketTransform = false;

@@ -19,6 +19,7 @@ public:
 
 private:
     void DrawMobileControls();
+    void DrawPerformanceMetrics();
     struct FTouchCapture
     {
         bool bDown = false;
@@ -29,6 +30,14 @@ private:
     FTouchCapture Touches[10];
     FVector2D DriveInput = FVector2D::ZeroVector;
     float LeverInput[3] = {0.0f, 0.0f, 0.0f};
+    TWeakObjectPtr<class ASandCollapseSurfacePreviewActor> PerformanceActor;
+    double PerformanceWindowStartSeconds = 0.0;
+    uint64 PerformanceWindowStartSimulationFrames = 0;
+    uint64 PerformanceWindowStartSurfaceFrames = 0;
+    int32 PerformanceWindowRenderFrames = 0;
+    float DisplayRenderFps = 0.0f;
+    float DisplaySimulationHz = 0.0f;
+    float DisplaySurfaceHz = 0.0f;
 
     // Canvas requires a live UFont even when a Slate composite font is supplied.
     UPROPERTY(Transient)

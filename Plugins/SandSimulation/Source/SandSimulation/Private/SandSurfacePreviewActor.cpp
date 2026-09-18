@@ -598,6 +598,8 @@ bool ASandSurfacePreviewActor::GenerateSurfaceFromParticlePositions(
                                 false);
                             WeakThis->OnSurfaceMeshUpdated(Mesh.Vertices, Mesh.Indices);
                             const double TotalSeconds = FPlatformTime::Seconds() - RequestStartSeconds;
+                            WeakThis->LastSurfaceBuildMilliseconds =
+                                static_cast<float>(TotalSeconds * 1000.0);
                             const double DensityMegabytes =
                                 static_cast<double>(Field.NodeCount() * sizeof(uint32)) / (1024.0 * 1024.0);
                             const double MeshMegabytes = static_cast<double>(

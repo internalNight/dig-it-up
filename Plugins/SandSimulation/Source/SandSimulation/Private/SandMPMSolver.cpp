@@ -322,6 +322,17 @@ TSharedRef<FRuntimeSimulationState, ESPMode::ThreadSafe> CreateRuntimeSandboxSim
     const bool bBench = FParse::Param(FCommandLine::Get(), TEXT("SandRoadheaderBench"));
     if (bBench && Quality.IsEmpty()) State->CellSize = 0.025f;
     State->InternalDeltaSeconds = 1.0f / (State->CellSize <= 0.025f ? 1200.0f : State->CellSize <= 0.03125f ? 900.0f : State->CellSize <= 0.05f ? 600.0f : 300.0f);
+    if (Quality == TEXT("Mobile"))
+    {
+        // Eight internal steps per 30 Hz coupling frame save two full
+        // particle/grid passes while retaining the same physical outer step.
+        State->InternalDeltaSeconds = 1.0f / 240.0f;
+    }
+    int32 InternalHz = 0;
+    if (FParse::Value(FCommandLine::Get(), TEXT("SandInternalHz="), InternalHz) && InternalHz > 0)
+    {
+        State->InternalDeltaSeconds = 1.0f / FMath::Clamp(InternalHz, 120, 1200);
+    }
     int32 SubstepScale=1; FParse::Value(FCommandLine::Get(),TEXT("SandSubsteps="),SubstepScale);
     State->InternalDeltaSeconds/=FMath::Clamp(SubstepScale,1,4);
     State->InternalDeltaSeconds=FittedInternalStep(CouplingStepSeconds(),State->InternalDeltaSeconds);

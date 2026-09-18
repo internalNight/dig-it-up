@@ -13,11 +13,12 @@ finger. The stick base stays anchored in the lower-left corner; drag its knob
 from the fixed centre to drive and steer. Use an Android device to test
 simultaneous touches. Run
 `Tools/PlayMobileExcavatorPreview.ps1 -Capture` to make an automatic screenshot
-at `Artifacts/SandSurfaceUEPreview.png`.
+at `Artifacts/SandSurfaceUEPreview.png`. Add `-Performance` to show the
+diagnostic overlay in a desktop preview.
 
 On Android the simulation defaults to the `Mobile` quality tier: 10 cm MPM
-cells, 37,500 sand particles in the standard 5 x 5 x 1.5 m bed, and a
-7 cm visual surface grid. The four track support patches now scale with cell
+cells, 37,500 sand particles in the standard 5 x 5 x 1.5 m bed, and an
+8 cm visual surface grid. The four track support patches now scale with cell
 size and require floor-connected particles. When the visible mesh has a gap
 at a tread, the coarse tier can use that physical bearing patch rather than
 dropping a support point. The command-line option `-SandQuality=Legacy` or
@@ -38,16 +39,24 @@ backdrop, and does not spawn the unsupported SkyAtmosphere actor on Android.
 Version 1.2 anchors the stick base and directional centre and limits touch
 capture to the area around the stick. The desktop preview enables mouse-to-touch
 input for one-finger interaction.
+Version 1.3 retains the 30 Hz physical outer step, uses eight instead of ten
+internal MPM steps per outer step, and lets the mobile surface rebuild whenever
+its prior job finishes, up to 30 Hz. The simulation now accumulates wall time
+while a GPU step is in flight. A Development Android build displays Game FPS,
+Sand Hz, Surface Hz, solver/readback time and surface-build time in the top-right.
+Wait five seconds after launch before reading these values. For the evidence
+and limitations, see `Docs/MobilePerformance.md`.
 
 On the current development machine, UE 5.8.2 recognizes Android API 36,
 Build Tools 36.0.0, CMake 3.22.1 and NDK 27.2.12479018 (r27c). The Android
 arm64 C++ target compiled and `RunUAT BuildCookRun` completed an Android ASTC
-Development cook, package and archive on 17 September 2026. The current test
-build is `Artifacts/AndroidFixedJoystick/SandExcavator-arm64.apk` (version
-1.2, code 3, about 160 MB). `bPackageDataInsideApk=True` embeds
+Development cook, package and archive on 18 September 2026. The current test
+build is `Artifacts/AndroidPerformance13/SandExcavator-arm64.apk` (version
+1.3, code 4, about 160 MB). `bPackageDataInsideApk=True` embeds
 `assets/main.obb.png`, so this APK can be installed as one file. The archive
 also contains `Install_SandExcavator-arm64.bat` for installation through ADB.
-The older `Artifacts/AndroidMobileFixFinal/` package is version 1.1, and
+The older `Artifacts/AndroidFixedJoystick/` package is version 1.2,
+`Artifacts/AndroidMobileFixFinal/` is version 1.1, and
 `Artifacts/AndroidSingleApk/` is version 1.0. The earlier
 `Artifacts/AndroidPackage/` build keeps its content in a separate OBB and
 must be installed with its script.

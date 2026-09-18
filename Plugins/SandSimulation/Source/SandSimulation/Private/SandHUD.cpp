@@ -11,6 +11,9 @@
 #include "SandRoadheaderPawn.h"
 #include "SandPreviewGameMode.h"
 #include "SandLevelSettings.h"
+#include "SandCollapseSurfacePreviewActor.h"
+#include "EngineUtils.h"
+#include "HAL/PlatformTime.h"
 #include "Misc/CommandLine.h"
 #include "Misc/Parse.h"
 
@@ -176,6 +179,78 @@ void ASandHUD::DrawMobileControls()
     }
 }
 
+void ASandHUD::DrawPerformanceMetrics()
+{
+#if PLATFORM_ANDROID && !UE_BUILD_SHIPPING
+    const bool bVisible = true;
+#else
+    const bool bVisible = FParse::Param(FCommandLine::Get(), TEXT("SandPerfHud"));
+#endif
+    if (!bVisible)
+    {
+        return;
+    }
+    if (!PerformanceActor.IsValid())
+    {
+        TActorIterator<ASandCollapseSurfacePreviewActor> It(GetWorld());
+        if (It)
+        {
+            PerformanceActor = *It;
+        }
+    }
+    if (!PerformanceActor.IsValid())
+    {
+        return;
+    }
+
+    const double Now = FPlatformTime::Seconds();
+    if (PerformanceWindowStartSeconds == 0.0)
+    {
+        PerformanceWindowStartSeconds = Now;
+        PerformanceWindowStartSimulationFrames = PerformanceActor->GetCompletedSimulationFrames();
+        PerformanceWindowStartSurfaceFrames = PerformanceActor->GetCompletedSurfaceFrames();
+    }
+    ++PerformanceWindowRenderFrames;
+    const double WindowSeconds = Now - PerformanceWindowStartSeconds;
+    if (WindowSeconds >= 2.0)
+    {
+        DisplayRenderFps = PerformanceWindowRenderFrames / WindowSeconds;
+        DisplaySimulationHz =
+            (PerformanceActor->GetCompletedSimulationFrames() - PerformanceWindowStartSimulationFrames) /
+            WindowSeconds;
+        DisplaySurfaceHz =
+            (PerformanceActor->GetCompletedSurfaceFrames() - PerformanceWindowStartSurfaceFrames) /
+            WindowSeconds;
+        PerformanceWindowStartSeconds = Now;
+        PerformanceWindowStartSimulationFrames = PerformanceActor->GetCompletedSimulationFrames();
+        PerformanceWindowStartSurfaceFrames = PerformanceActor->GetCompletedSurfaceFrames();
+        PerformanceWindowRenderFrames = 0;
+        UE_LOG(LogTemp, Display,
+            TEXT("MOBILE_PERF renderFps=%.1f simHz=%.1f surfaceHz=%.1f solverReadbackMs=%.1f surfaceBuildMs=%.1f"),
+            DisplayRenderFps, DisplaySimulationHz, DisplaySurfaceHz,
+            PerformanceActor->GetLastGpuStepMilliseconds(),
+            PerformanceActor->GetLastSurfaceBuildMilliseconds());
+    }
+
+    const float Scale = FMath::Clamp(Canvas->SizeY / 720.0f, 0.8f, 1.3f);
+    const float X = Canvas->SizeX - 385.0f * Scale;
+    const float Y = 18.0f * Scale;
+    UFont* Font = GEngine->GetSmallFont();
+    DrawRect(FLinearColor(0.015f, 0.02f, 0.025f, 0.76f),
+        X, Y, 367.0f * Scale, 91.0f * Scale);
+    DrawText(TEXT("PERFORMANCE  /  TEST BUILD"), FLinearColor(1.0f, 0.75f, 0.25f),
+        X + 10.0f * Scale, Y + 7.0f * Scale, Font, 0.93f * Scale);
+    DrawText(FString::Printf(TEXT("Game %.0f fps   Sand %.0f / 30 Hz"),
+        DisplayRenderFps, DisplaySimulationHz), FLinearColor::White,
+        X + 10.0f * Scale, Y + 28.0f * Scale, Font, 0.88f * Scale);
+    DrawText(FString::Printf(TEXT("Surface %.1f Hz   Solver+readback %.1f ms"),
+        DisplaySurfaceHz, PerformanceActor->GetLastGpuStepMilliseconds()), FLinearColor::White,
+        X + 10.0f * Scale, Y + 48.0f * Scale, Font, 0.88f * Scale);
+    DrawText(FString::Printf(TEXT("Surface build %.1f ms"),
+        PerformanceActor->GetLastSurfaceBuildMilliseconds()), FLinearColor::White,
+        X + 10.0f * Scale, Y + 68.0f * Scale, Font, 0.88f * Scale);
+}
+
 void ASandHUD::DrawHUD()
 {
     Super::DrawHUD();
@@ -339,6 +414,7 @@ void ASandHUD::DrawHUD()
     {
         DrawMobileControls();
     }
+    DrawPerformanceMetrics();
 }
 
 void ASandHUD::NotifyHitBoxClick(FName BoxName)

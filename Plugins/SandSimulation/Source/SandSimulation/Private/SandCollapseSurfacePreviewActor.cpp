@@ -61,7 +61,7 @@ void ASandCollapseSurfacePreviewActor::BeginPlay()
     if (SimulationState->CellSize >= 0.099f)
     {
         // Match the mobile surface kernel to the coarser physical grid.
-        VoxelSizeMeters = 0.07f;
+        VoxelSizeMeters = 0.08f;
         KernelRadiusMeters = 0.14f;
     }
     // Acceptance fixture: a sloping corner excavation with two intact bottom layers.
@@ -149,13 +149,22 @@ void ASandCollapseSurfacePreviewActor::Tick(const float DeltaSeconds)
     if(auto* Mode=Cast<ASandPreviewGameMode>(GetWorld()->GetAuthGameMode()))
         if(Mode->IsSelectingVehicle()) return;
     ToolSampleElapsedSeconds += DeltaSeconds;
-    if (!SimulationState.IsValid() || bSimulationStepInFlight)
+    if (!SimulationState.IsValid())
     {
         return;
     }
 
     const float FixedFrameSeconds = Sand::MPM::CouplingStepSeconds();
-    SimulationAccumulatorSeconds += DeltaSeconds * SimulationSpeed;
+    // A mobile GPU job can span multiple render frames. Count that wall time
+    // even while the previous step is in flight; otherwise the sand runs in
+    // slow motion despite a responsive camera and touch interface.
+    SimulationAccumulatorSeconds = FMath::Min(
+        SimulationAccumulatorSeconds + DeltaSeconds * SimulationSpeed,
+        4.0f * FixedFrameSeconds);
+    if (bSimulationStepInFlight)
+    {
+        return;
+    }
     if (SimulationAccumulatorSeconds < FixedFrameSeconds)
     {
         return;
@@ -284,11 +293,18 @@ void ASandCollapseSurfacePreviewActor::Tick(const float DeltaSeconds)
         Tool.BucketInterior.AngularVelocityRadiansPerSecond = BucketAngularVelocity;
     }
 
-    // The GPU simulation stays at 30 Hz; CPU marching-cubes surface work is intentionally
-    // limited to 10 Hz so a 16 GB machine cannot build up an unbounded mesh backlog.
-    const uint32 SurfaceStride=FMath::RoundToInt(.1f/FixedFrameSeconds);
-    const bool bRefreshSurface = (CompletedSimulationFrames / SurfaceStride) !=
-        ((CompletedSimulationFrames + FramesToAdvance) / SurfaceStride);
+    // The mobile mesh may refresh every physical frame, but only after its
+    // previous GPU density readback, CPU extraction and upload complete.
+    // Slow devices naturally skip busy frames without paying for a particle
+    // readback whose data would otherwise be discarded.
+    const uint32 SurfaceStride = SimulationState->CellSize >= 0.099f
+        ? 1u : static_cast<uint32>(FMath::RoundToInt(0.1f / FixedFrameSeconds));
+    const bool bRefreshSurface = !IsSurfaceBuildInFlight() &&
+        CompletedSimulationFrames + FramesToAdvance >= LastSurfaceSampleFrame + SurfaceStride;
+    if (bRefreshSurface)
+    {
+        LastSurfaceSampleFrame = CompletedSimulationFrames + FramesToAdvance;
+    }
     const TWeakObjectPtr<ASandCollapseSurfacePreviewActor> WeakThis(this);
     const TWeakObjectPtr<ASandExcavatorPawn> WeakExcavator = Excavator;
     const uint32 ActiveToolColliderCount = Tool.ColliderCount;
@@ -310,6 +326,7 @@ void ASandCollapseSurfacePreviewActor::Tick(const float DeltaSeconds)
             }
             WeakThis->bSimulationStepInFlight = false;
             WeakThis->CompletedSimulationFrames += FramesToAdvance;
+            WeakThis->LastGpuStepMilliseconds = static_cast<float>(GpuSeconds * 1000.0);
             const bool bLogFrame = WeakThis->CompletedSimulationFrames == FramesToAdvance ||
                 WeakThis->CompletedSimulationFrames % FMath::RoundToInt(2.f/FixedFrameSeconds) == 0;
             int32 MovedParticleCount = -1;

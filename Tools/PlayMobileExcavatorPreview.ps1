@@ -1,6 +1,7 @@
 param(
     [string]$EngineRoot = 'D:\UE_5.8',
-    [switch]$Capture
+    [switch]$Capture,
+    [switch]$Performance
 )
 $ErrorActionPreference = 'Stop'
 $projectRoot = Split-Path $PSScriptRoot -Parent
@@ -12,6 +13,7 @@ $arguments = @(
     '-SandTouchPreview', '-SandQuality=Mobile', '-faketouches',
     '-ini:Input:[/Script/Engine.InputSettings]:bUseMouseForTouch=True'
 )
+if ($Performance) { $arguments += '-SandPerfHud' }
 if ($Capture) {
     $started = Get-Date
     $arguments += @('-SandCaptureSurfacePreview', '-SandCaptureDelaySeconds=4', '-nosound')

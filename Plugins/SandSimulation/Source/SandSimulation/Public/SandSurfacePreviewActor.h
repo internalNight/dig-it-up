@@ -50,6 +50,8 @@ public:
         const FVector3f& MaximumMeters);
 
     bool IsSurfaceBuildInFlight() const { return bSurfaceBuildInFlight; }
+    uint64 GetCompletedSurfaceFrames() const { return CompletedBuildCount; }
+    float GetLastSurfaceBuildMilliseconds() const { return LastSurfaceBuildMilliseconds; }
 
 protected:
     virtual void BeginPlay() override;
@@ -58,6 +60,7 @@ protected:
 private:
     uint32 BuildGeneration = 0;
     uint64 CompletedBuildCount = 0;
+    float LastSurfaceBuildMilliseconds = 0.0f;
     bool bSurfaceBuildInFlight = false;
     bool bCaptureScheduled = false;
 };
