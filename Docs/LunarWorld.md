@@ -48,13 +48,17 @@ separating the scene into two computational scales.
 
 ## What is environmental context
 
-The surrounding **2,048 m x 2,048 m** terrain is a lightweight procedural mesh.
-Its central measured backbone is a fixed 256 x 256 crop of the LROC NAC DTM product
+The surrounding **2,048 m x 2,048 m** detailed terrain is a lightweight procedural
+mesh. A second non-colliding **8,192 m x 8,192 m** low-resolution ring continues
+the relief to the visible horizon for only 30,968 additional triangles. Its
+central measured backbone is a fixed 256 x 256 crop of the LROC NAC DTM product
 `NAC_DTM_NOBILE03`. A 129 x 129 embedded height table is interpolated onto a
 257 x 257 runtime mesh. The source
 product describes terrain near Nobile crater rim and Mons Mouton at 4 m/pixel.
-The outer 512 m band on each side is explicitly synthetic low-frequency horizon
-relief; the source crop is tapered rather than stretched beyond its footprint.
+The source crop is radially feathered inside its 1,024 m square footprint so its
+tile boundary cannot appear as straight ridges. Terrain beyond that measured crop
+is explicitly synthetic low-frequency horizon relief rather than stretched source
+pixels.
 
 Official source and product page:
 
@@ -70,10 +74,18 @@ crater occur together at one surveyed coordinate.
 
 The macro terrain and its larger distant rocks are static visual context. The
 100 m field becomes interactive locally as the physics window follows the
-excavator; ten near-field rocks are independent rigid bodies. A 128 m transition
+excavator; ten near-field rocks are independent rigid bodies. A 144 m transition
 terrain moves its opening with the resident window; finite marching-cubes side
 faces are culled relative to that moving window so the old square black rim and
 pool-wall appearance are not rendered.
+
+The normal camera is now lower and closer to keep the excavator and bucket work
+readable. Pressing **C** changes to an oblique 1.2 km regional view with black sky
+and the 8.192 km horizon. In that distant view the sub-pixel live MPM mesh and
+cached trace proxies are temporarily hidden under the continuous analytical
+terrain, eliminating the conspicuous square physics patch. Returning to the close
+camera restores them; physics and cached deformation continue unchanged while the
+overview is active.
 
 ## Visual direction
 
@@ -94,6 +106,22 @@ one 38.7 ms shift sample). The captured warmed surface build was 53.9 ms. Outsid
 the resident window the run retained nine visible historical chunk proxies with
 18,432 triangles. These are observations from the development machine, not a
 general hardware guarantee.
+
+The separate regional-view capture rendered 54 FPS at capture after startup,
+held approximately 30/30 Hz sand time and showed the black airless sky without
+the former square active-window patch or straight DTM crop seams. The 8.192 km
+horizon has no collision and does not expand the MPM or driveable domain.
+
+Final gameplay regressions also covered the original loop rather than only the
+landscape. The deterministic scoop cycle moved up to 125 material points, carried
+22 points in the bucket and later disabled retention to dump them. Four window
+shifts returned to the original 265,483-particle state with 4/4 track supports;
+the nine inactive trace chunks remained visible. The rigid-rock impulse check
+moved a 23.73 kg convex rock by about 1.10 m before it settled with its bottom
+about 2.17 cm below the sampled granular surface. The scripted excavator can
+reach roughly 20 degrees pitch and 17 degrees roll after digging directly beneath
+itself; this is a deliberately severe automated manoeuvre and remains a handling
+limit to watch during manual playtesting.
 
 The 100-fold increase in interactive plan area therefore does not allocate a
 100-fold GPU volume. GPU particle/grid cost follows the 15 m resident window;

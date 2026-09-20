@@ -22,12 +22,14 @@ public:
         int32 Resolution,
         float SpacingMeters);
     void SetActiveWindowCenterMeters(FVector2f NewCenterMeters);
+    void SetOverviewMode(bool bEnabled);
 
 protected:
     virtual void BeginPlay() override;
 
 private:
     void BuildMacroTerrain();
+    void BuildDistantTerrain();
     void BuildTransitionTerrain();
     void BuildCachedDeformationTerrain();
     void BuildRocks();
@@ -37,6 +39,9 @@ private:
 
     UPROPERTY()
     TObjectPtr<UProceduralMeshComponent> MacroTerrain;
+
+    UPROPERTY()
+    TObjectPtr<UProceduralMeshComponent> DistantTerrain;
 
     UPROPERTY()
     TObjectPtr<UProceduralMeshComponent> TransitionTerrain;
@@ -60,4 +65,5 @@ private:
     TMap<FIntPoint,TArray<float>> CachedDeformationHeights;
     int32 CachedDeformationResolution = 0;
     float CachedDeformationSpacingMeters = 0.0f;
+    bool bOverviewMode = false;
 };

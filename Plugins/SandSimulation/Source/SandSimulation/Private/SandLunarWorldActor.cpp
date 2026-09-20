@@ -64,7 +64,7 @@ void AppendQuad(
         {
             const float MareBlend = 1.0f - Sand::Lunar::SmoothStep(175.0f,245.0f,
                 FVector2f(Point.X + 250.0f,Point.Y + 35.0f).Size());
-            const FLinearColor MareColor = FLinearColor::FromSRGBColor(FColor(50,54,62));
+            const FLinearColor MareColor = FLinearColor::FromSRGBColor(FColor(72,75,82));
             const FLinearColor HighlandColor = FLinearColor::FromSRGBColor(FColor(126,128,134));
             Mesh.Colors.Add(FMath::Lerp(HighlandColor,MareColor,MareBlend));
         }
@@ -239,6 +239,11 @@ ASandLunarWorldActor::ASandLunarWorldActor()
     MacroTerrain->SetupAttachment(SceneRoot);
     MacroTerrain->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
     MacroTerrain->SetCastShadow(true);
+    DistantTerrain = CreateDefaultSubobject<UProceduralMeshComponent>(TEXT("DistantTerrain"));
+    DistantTerrain->SetupAttachment(SceneRoot);
+    DistantTerrain->SetRelativeLocation(FVector(0.0f,0.0f,-2.0f));
+    DistantTerrain->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+    DistantTerrain->SetCastShadow(false);
     TransitionTerrain = CreateDefaultSubobject<UProceduralMeshComponent>(TEXT("TransitionTerrain"));
     TransitionTerrain->SetupAttachment(SceneRoot);
     TransitionTerrain->SetRelativeLocation(FVector(0.0f,0.0f,-1.0f));
@@ -254,6 +259,7 @@ ASandLunarWorldActor::ASandLunarWorldActor()
     if (VertexColorMaterial.Succeeded())
     {
         MacroTerrain->SetMaterial(0,VertexColorMaterial.Object);
+        DistantTerrain->SetMaterial(0,VertexColorMaterial.Object);
         TransitionTerrain->SetMaterial(0,VertexColorMaterial.Object);
         CachedDeformationTerrain->SetMaterial(0,VertexColorMaterial.Object);
     }
@@ -272,6 +278,7 @@ void ASandLunarWorldActor::BeginPlay()
 {
     Super::BeginPlay();
     BuildMacroTerrain();
+    BuildDistantTerrain();
     BuildTransitionTerrain();
     BuildCachedDeformationTerrain();
     BuildRocks();
@@ -280,6 +287,23 @@ void ASandLunarWorldActor::BeginPlay()
         SandSurface = *It;
         break;
     }
+}
+
+void ASandLunarWorldActor::SetOverviewMode(const bool bEnabled)
+{
+    if (bOverviewMode == bEnabled)
+    {
+        return;
+    }
+    bOverviewMode = bEnabled;
+    if (SandSurface.IsValid())
+    {
+        SandSurface->SetActorHiddenInGame(bOverviewMode);
+    }
+    CachedDeformationTerrain->SetVisibility(!bOverviewMode,true);
+    BuildTransitionTerrain();
+    UE_LOG(LogTemp,Display,TEXT("LUNAR_OVERVIEW mode=%d liveSurfaceVisible=%d"),
+        bOverviewMode ? 1 : 0,bOverviewMode ? 0 : 1);
 }
 
 void ASandLunarWorldActor::CacheDeformationChunk(
@@ -330,7 +354,7 @@ void ASandLunarWorldActor::BuildMacroTerrain()
             const float X1 = X0 + Step;
             const float Y1 = Y0 + Step;
             const FVector2f Center(0.5f * (X0 + X1), 0.5f * (Y0 + Y1));
-            if (FMath::Max(FMath::Abs(Center.X), FMath::Abs(Center.Y)) < 60.0f)
+            if (FMath::Max(FMath::Abs(Center.X), FMath::Abs(Center.Y)) < 64.0f)
             {
                 continue;
             }
@@ -339,6 +363,44 @@ void ASandLunarWorldActor::BuildMacroTerrain()
         }
     }
     UploadSection(MacroTerrain, 0, MoveTemp(Terrain), true);
+}
+
+void ASandLunarWorldActor::BuildDistantTerrain()
+{
+    const USandLevelSettings* Settings = GetDefault<USandLevelSettings>();
+    const float NearSize = Settings->LunarLandscapeSizeMeters;
+    const float WorldSize = FMath::Max(Settings->LunarHorizonSizeMeters,NearSize);
+    const int32 Resolution = FMath::Clamp(Settings->LunarHorizonResolution,33,257);
+    const float Step = WorldSize / (Resolution - 1);
+    const int32 NearResolution = FMath::Clamp(Settings->LunarLandscapeResolution,33,257);
+    const float NormalSampleStep = NearSize / (NearResolution - 1);
+    const float Minimum = -0.5f * WorldSize;
+    const float NearHalf = 0.5f * NearSize;
+    const float HiddenEdge = FMath::Max(0.0f,NearHalf - Step);
+    FMeshSectionData Terrain;
+    for (int32 Y = 0; Y < Resolution - 1; ++Y)
+    {
+        for (int32 X = 0; X < Resolution - 1; ++X)
+        {
+            const float X0 = Minimum + X * Step;
+            const float Y0 = Minimum + Y * Step;
+            const float X1 = X0 + Step;
+            const float Y1 = Y0 + Step;
+            const bool bInsideNearTerrain = X0 >= -HiddenEdge && X1 <= HiddenEdge &&
+                Y0 >= -HiddenEdge && Y1 <= HiddenEdge;
+            if (bInsideNearTerrain)
+            {
+                continue;
+            }
+            AppendQuad(Terrain,X0,Y0,X1,Y1,NormalSampleStep,Settings->SandDepthMeters,
+                Settings->LunarPlayableWidthMeters,FLinearColor::White,true);
+        }
+    }
+    const int32 TriangleCount = Terrain.Indices.Num() / 3;
+    UploadSection(DistantTerrain,0,MoveTemp(Terrain),false);
+    UE_LOG(LogTemp,Display,
+        TEXT("LUNAR_HORIZON size=%.0fm resolution=%d triangles=%d collision=0"),
+        WorldSize,Resolution,TriangleCount);
 }
 
 void ASandLunarWorldActor::BuildTransitionTerrain()
@@ -361,7 +423,9 @@ void ASandLunarWorldActor::BuildTransitionTerrain()
             Key.Y >= MinimumActiveKey.Y &&
             Key.Y < MinimumActiveKey.Y + ResidentChunkCount;
     };
-    constexpr float HalfRing = 64.0f;
+    // Extend under the macro mesh by one near-terrain cell. The component sits
+    // 1 cm lower, so the outer open edge is hidden without z-fighting.
+    constexpr float HalfRing = 72.0f;
     constexpr float Step = 1.0f;
     // Slight overlap hides the independent marching-cubes edge without
     // covering the playable top surface.
@@ -372,7 +436,7 @@ void ASandLunarWorldActor::BuildTransitionTerrain()
         for (float X = -HalfRing; X < HalfRing - 0.1f; X += Step)
         {
             const FVector2f Center(X + 0.5f * Step, Y + 0.5f * Step);
-            if (FMath::Max(
+            if (!bOverviewMode && FMath::Max(
                 FMath::Abs(Center.X - ActiveWindowCenterMeters.X),
                 FMath::Abs(Center.Y - ActiveWindowCenterMeters.Y)) < HoleHalf)
             {
@@ -394,7 +458,7 @@ void ASandLunarWorldActor::BuildTransitionTerrain()
                 continue;
             }
             AppendQuad(Ring, X, Y, X + Step, Y + Step, Step, BaseDepth, ActiveWidth,
-                FLinearColor(0.23f,0.24f,0.26f));
+                FLinearColor(0.23f,0.24f,0.26f),bOverviewMode);
         }
     }
     UploadSection(TransitionTerrain, 0, MoveTemp(Ring), true);

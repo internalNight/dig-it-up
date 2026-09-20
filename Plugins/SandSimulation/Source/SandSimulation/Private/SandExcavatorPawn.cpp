@@ -5,11 +5,13 @@
 #include "SandHUD.h"
 #include "SandLevelSettings.h"
 #include "SandLunarTerrain.h"
+#include "SandLunarWorldActor.h"
 
 #include "Camera/CameraComponent.h"
 #include "Components/BoxComponent.h"
 #include "Components/StaticMeshComponent.h"
 #include "Engine/StaticMesh.h"
+#include "EngineUtils.h"
 #include "GameFramework/PlayerController.h"
 #include "GameFramework/SpringArmComponent.h"
 #include "InputCoreTypes.h"
@@ -268,11 +270,11 @@ void ASandExcavatorPawn::BeginPlay()
         // Frame the expanded excavation patch and its near-field relief rather
         // than retaining the tight camera designed for the five-metre box.
         bLunarOverview = FParse::Param(FCommandLine::Get(),TEXT("SandLunarOverview"));
-        CameraBoom->TargetArmLength = bLunarOverview ? 55000.0f : 750.0f;
+        CameraBoom->TargetArmLength = bLunarOverview ? 120000.0f : 520.0f;
         CameraBoom->SetRelativeRotation(bLunarOverview
-            ? FRotator(-48.0f,-58.0f,0.0f) : FRotator(-20.0f,-58.0f,0.0f));
+            ? FRotator(-18.0f,-48.0f,0.0f) : FRotator(-17.0f,-58.0f,0.0f));
         CameraBoom->bDoCollisionTest = !bLunarOverview;
-        FollowCamera->FieldOfView = bLunarOverview ? 72.0f : 62.0f;
+        FollowCamera->FieldOfView = bLunarOverview ? 70.0f : 60.0f;
         FollowCamera->PostProcessBlendWeight = 1.0f;
         FPostProcessSettings& Exposure = FollowCamera->PostProcessSettings;
         Exposure.bOverride_AutoExposureMethod = true;
@@ -283,6 +285,10 @@ void ASandExcavatorPawn::BeginPlay()
         Exposure.CameraShutterSpeed = 100.0f;
         Exposure.bOverride_DepthOfFieldFstop = true;
         Exposure.DepthOfFieldFstop = 22.0f;
+        for (TActorIterator<ASandLunarWorldActor> It(GetWorld()); It; ++It)
+        {
+            It->SetOverviewMode(bLunarOverview);
+        }
     }
     for (int32 Index = 0; Index < 4; ++Index)
     {
@@ -371,11 +377,15 @@ void ASandExcavatorPawn::Tick(const float DeltaSeconds)
     if (PlayerController && bLunarWorld && PlayerController->WasInputKeyJustPressed(EKeys::C))
     {
         bLunarOverview = !bLunarOverview;
-        CameraBoom->TargetArmLength = bLunarOverview ? 55000.0f : 750.0f;
+        CameraBoom->TargetArmLength = bLunarOverview ? 120000.0f : 520.0f;
         CameraBoom->SetRelativeRotation(bLunarOverview
-            ? FRotator(-48.0f,-58.0f,0.0f) : FRotator(-20.0f,-58.0f,0.0f));
+            ? FRotator(-18.0f,-48.0f,0.0f) : FRotator(-17.0f,-58.0f,0.0f));
         CameraBoom->bDoCollisionTest = !bLunarOverview;
-        FollowCamera->FieldOfView = bLunarOverview ? 72.0f : 62.0f;
+        FollowCamera->FieldOfView = bLunarOverview ? 70.0f : 60.0f;
+        for (TActorIterator<ASandLunarWorldActor> It(GetWorld()); It; ++It)
+        {
+            It->SetOverviewMode(bLunarOverview);
+        }
     }
 
     float Throttle = 0.0f;

@@ -75,9 +75,10 @@ void ASandPreviewGameMode::BeginPlay()
     if (bLunarWorld)
     {
         World->SpawnActor<ASandLunarWorldActor>(FVector::ZeroVector, FRotator::ZeroRotator);
-        UE_LOG(LogTemp, Display, TEXT("LUNAR_WORLD playable=%.1fm activeMPM=%.1fm macroTerrain=%.0fm source=NAC_DTM_NOBILE03 gravity=Earth-gameplay"),
+        UE_LOG(LogTemp, Display, TEXT("LUNAR_WORLD playable=%.1fm activeMPM=%.1fm macroTerrain=%.0fm horizon=%.0fm source=NAC_DTM_NOBILE03 gravity=Earth-gameplay"),
             LevelSettings->LunarPlayableWidthMeters,ActiveWidthMeters,
-            LevelSettings->LunarLandscapeSizeMeters);
+            LevelSettings->LunarLandscapeSizeMeters,
+            LevelSettings->LunarHorizonSizeMeters);
     }
 
     UStaticMesh* CubeMesh = LoadObject<UStaticMesh>(nullptr, TEXT("/Engine/BasicShapes/Cube.Cube"));

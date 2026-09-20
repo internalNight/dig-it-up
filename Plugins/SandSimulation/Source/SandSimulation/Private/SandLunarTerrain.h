@@ -98,7 +98,10 @@ inline float MacroSurfaceHeightMeters(
     const float V = Y / Nobile03GroundSizeMeters + 0.5f;
     const float SourceCenter = SampleNobile03ElevationMeters(0.5f, 0.5f);
     const float SourceHalfExtent = 0.5f * Nobile03GroundSizeMeters;
-    const float SourceEdgeDistance = FMath::Max(FMath::Abs(X), FMath::Abs(Y));
+    // Use a radial feather inside the square DTM crop. A Chebyshev/square
+    // envelope exposes the crop boundary as long straight ridges in regional
+    // views, which is a data-tile artifact rather than lunar topography.
+    const float SourceEdgeDistance = FVector2f(X,Y).Size();
     const float SourceEnvelope = 1.0f - SmoothStep(
         0.86f * SourceHalfExtent, SourceHalfExtent, SourceEdgeDistance);
     const float SourceRelief =

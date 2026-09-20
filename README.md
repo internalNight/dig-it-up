@@ -4,8 +4,8 @@
 
 The default source-built scene is now a lunar excavation field: a **100 x 100 m
 driveable granular field** streams through a 15 x 15 m GPU-MPM window inside a
-2,048 m lunar landscape whose
-central 1,024 m uses embedded LROC relief, with highlands, a mare-like basin,
+8,192 m visual lunar horizon. Its detailed inner 2,048 m landscape uses a
+central 1,024 m embedded LROC relief crop, with highlands, a mare-like basin,
 impact craters and scattered rocks. The
 original digging objective is preserved as a buried survey marker. Double-click
 `PlayLunarWorld.cmd` to run it, or use `-SandLegacyBox` for the earlier box scene.
@@ -88,7 +88,7 @@ granted by this upload; Unreal Engine and third-party components keep their own 
 ## Project and milestone notes
 
 Current playtest: **Dig It Up — Lunar Field**, a 100 × 100 m driveable regolith
-field with a moving 15 × 15 m active physics window inside a kilometre-scale
+field with a moving 15 × 15 m active physics window inside an 8.192 km visual
 lunar context. Uncover approximately 10 × 10 cm of the
 buried survey marker; Victory appears 3 seconds later.
 Continue Digging preserves the excavation, or Exit Game ends the session.
@@ -121,6 +121,7 @@ functional transport does not establish real-machine performance.
 
 - Windows PC, DX12 and Shader Model 6
 - One 100 m x 100 m driveable field with a following 15 m x 15 m GPU-MPM window
+- A 2.048 km detailed context plus a non-colliding 8.192 km horizon ring
 - Three-by-three five-metre chunks remain live; visited chunks preserve their full
   particle state and a visible frozen deformation proxy while GPU load stays local
 - No visible retaining walls in the lunar profile; the upper boundary remains open

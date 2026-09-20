@@ -30,6 +30,13 @@ public:
     UPROPERTY(Config, EditAnywhere, Category="Lunar World", meta=(ClampMin="33", ClampMax="257"))
     int32 LunarLandscapeResolution = 257;
 
+    /** Low-cost non-colliding outer terrain used only to carry the lunar horizon. */
+    UPROPERTY(Config, EditAnywhere, Category="Lunar World", meta=(ClampMin="2048.0", ClampMax="16384.0", Units="m"))
+    float LunarHorizonSizeMeters = 8192.0f;
+
+    UPROPERTY(Config, EditAnywhere, Category="Lunar World", meta=(ClampMin="33", ClampMax="257"))
+    int32 LunarHorizonResolution = 129;
+
     UPROPERTY(Config, EditAnywhere, Category="Lunar World", meta=(ClampMin="0", ClampMax="320"))
     int32 LunarRockCount = 140;
     UPROPERTY(Config, EditAnywhere, Category="Victory", meta=(ClampMin="5", ClampMax="50"))
