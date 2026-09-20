@@ -127,11 +127,14 @@ TArray<FParticleData> MakeInitialColumn(
     float Density,
     float FrictionAngleDegrees);
 
-/** Creates the complete 5m x 5m sand body; no lower layer is frozen or omitted. */
+/** Creates the complete movable sand body; no lower layer is frozen or omitted. */
 TArray<FParticleData> MakeInitialSandbox(
     float CellSize,
     float Density,
-    float FrictionAngleDegrees, float SandDepthMeters = 2.0f);
+    float FrictionAngleDegrees,
+    float SandDepthMeters = 2.0f,
+    float WidthMeters = 5.0f,
+    bool bLunarTerrain = false);
 
 using FCollapseFramesCallback = TUniqueFunction<void(TArray<TArray<FParticleData>>&& Frames, float FrameDeltaSeconds)>;
 

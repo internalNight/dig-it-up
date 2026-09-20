@@ -1,5 +1,6 @@
 #include "SandMPMSolver.h"
 #include "SandMachineKinematics.h"
+#include "SandLunarTerrain.h"
 #include "Misc/CommandLine.h"
 #include "Misc/Parse.h"
 #include "SandLevelSettings.h"
@@ -77,12 +78,15 @@ TArray<FParticleData> MakeInitialColumn(
 TArray<FParticleData> MakeInitialSandbox(
     const float CellSize,
     const float Density,
-    const float FrictionAngleDegrees, const float SandDepthMeters)
+    const float FrictionAngleDegrees,
+    const float SandDepthMeters,
+    const float WidthMeters,
+    const bool bLunarTerrain)
 {
-    constexpr float WidthMeters = 5.0f;
     const int32 CellsX = FMath::RoundToInt(WidthMeters / CellSize);
     const int32 CellsY = FMath::RoundToInt(WidthMeters / CellSize);
-    const int32 CellsZ = FMath::RoundToInt(SandDepthMeters / CellSize);
+    const float MaximumSurfaceMeters = bLunarTerrain ? SandDepthMeters + 0.32f : SandDepthMeters;
+    const int32 CellsZ = FMath::CeilToInt(MaximumSurfaceMeters / CellSize);
     const FVector3f Minimum(-0.5f * WidthMeters, -0.5f * WidthMeters, 0.0f);
     const float ParticleVolume = FMath::Pow(CellSize, 3.0f);
     const float ParticleMass = Density * ParticleVolume;
@@ -98,7 +102,14 @@ TArray<FParticleData> MakeInitialSandbox(
             {
                 const FVector3f Position = Minimum +
                     (FVector3f(X, Y, Z) + FVector3f(0.5f)) * CellSize;
-                const float VerticalPressure = Density * 9.81f * (SandDepthMeters - Position.Z);
+                const float SurfaceMeters = bLunarTerrain
+                    ? Sand::Lunar::ActiveSurfaceHeightMeters(Position.X, Position.Y, SandDepthMeters, WidthMeters)
+                    : SandDepthMeters;
+                if (Position.Z >= SurfaceMeters)
+                {
+                    continue;
+                }
+                const float VerticalPressure = Density * 9.81f * (SurfaceMeters - Position.Z);
                 FParticleData Particle;
                 Particle.PositionAndMass = FVector4f(Position, ParticleMass);
                 Particle.VelocityAndVolume = FVector4f(0.0f, 0.0f, 0.0f, ParticleVolume);
@@ -320,6 +331,20 @@ TSharedRef<FRuntimeSimulationState, ESPMode::ThreadSafe> CreateRuntimeSandboxSim
     if (Quality == TEXT("Fine")) State->CellSize = 0.03125f;
     if (Quality == TEXT("Ultra")) State->CellSize = 0.025f;
     const bool bBench = FParse::Param(FCommandLine::Get(), TEXT("SandRoadheaderBench"));
+    const bool bLegacyAcceptance =
+        FParse::Param(FCommandLine::Get(),TEXT("SandVictoryTest")) ||
+        FParse::Param(FCommandLine::Get(),TEXT("SandBoundaryTest")) ||
+        FParse::Param(FCommandLine::Get(),TEXT("SandBoomRaiseTest")) ||
+        FParse::Param(FCommandLine::Get(),TEXT("SandSlopeCoastTest"));
+    const USandLevelSettings* LevelSettings = GetDefault<USandLevelSettings>();
+    const bool bLunarWorld = LevelSettings->bLunarWorld &&
+        !FParse::Param(FCommandLine::Get(), TEXT("SandLegacyBox")) && !bBench && !bLegacyAcceptance;
+    if (bLunarWorld && Quality.IsEmpty())
+    {
+        // Four times the playable area at a bounded point count. The current
+        // 8 GB target cannot keep the old 5 cm grid over the enlarged volume.
+        State->CellSize = 0.0625f;
+    }
     if (bBench && Quality.IsEmpty()) State->CellSize = 0.025f;
     State->InternalDeltaSeconds = 1.0f / (State->CellSize <= 0.025f ? 1200.0f : State->CellSize <= 0.03125f ? 900.0f : State->CellSize <= 0.05f ? 600.0f : 300.0f);
     if (Quality == TEXT("Mobile"))
@@ -337,16 +362,19 @@ TSharedRef<FRuntimeSimulationState, ESPMode::ThreadSafe> CreateRuntimeSandboxSim
     State->InternalDeltaSeconds/=FMath::Clamp(SubstepScale,1,4);
     State->InternalDeltaSeconds=FittedInternalStep(CouplingStepSeconds(),State->InternalDeltaSeconds);
     UE_LOG(LogTemp,Display,TEXT("TIME_GRID outerSeconds=%.9f internalSeconds=%.9f substeps=%d"),CouplingStepSeconds(),State->InternalDeltaSeconds,FMath::RoundToInt(CouplingStepSeconds()/State->InternalDeltaSeconds));
-    State->PhysicalMinimum = FVector3f(-2.5f, -2.5f, 0.0f);
-    const float Depth = GetDefault<USandLevelSettings>()->SandDepthMeters;
-    State->PhysicalMaximum = FVector3f(2.5f, 2.5f, Depth + 1.0f);
+    const float Width = bLunarWorld ? LevelSettings->ActiveWidthMeters : 5.0f;
+    State->PhysicalMinimum = FVector3f(-0.5f * Width, -0.5f * Width, 0.0f);
+    const float Depth = bLunarWorld ? LevelSettings->SandDepthMeters : 1.5f;
+    const float MaximumSurface = bLunarWorld ? Depth + 0.32f : Depth;
+    State->PhysicalMaximum = FVector3f(0.5f * Width, 0.5f * Width, MaximumSurface + 1.0f);
     State->GridOrigin = State->PhysicalMinimum - FVector3f(State->CellSize);
-    State->GridSize = FIntVector(FMath::CeilToInt(5.0f/State->CellSize)+3,
-        FMath::CeilToInt(5.0f/State->CellSize)+3, FMath::CeilToInt((Depth+1.0f)/State->CellSize)+3);
+    State->GridSize = FIntVector(FMath::CeilToInt(Width/State->CellSize)+3,
+        FMath::CeilToInt(Width/State->CellSize)+3,
+        FMath::CeilToInt((MaximumSurface+1.0f)/State->CellSize)+3);
     if(!bBench) State->InitialParticles = MakeInitialSandbox(
         State->CellSize,
         Material.BulkDensityKgPerM3,
-        Material.InternalFrictionAngleDegrees, Depth);
+        Material.InternalFrictionAngleDegrees, Depth, Width, bLunarWorld);
     if (bBench)
     {
         State->PhysicalMinimum = FVector3f(-1.2f,-0.6f,0);

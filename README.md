@@ -1,5 +1,18 @@
 # Dig It Up
 
+## Lunar field (2026-09-20)
+
+The default source-built scene is now a lunar excavation field: a fully movable
+10 x 10 m GPU-MPM regolith patch sits inside a 1,024 m LROC-informed landscape
+with highlands, a mare-like basin, impact craters and scattered rocks. The
+original digging objective is preserved as a buried survey marker. Double-click
+`PlayLunarWorld.cmd` to run it, or use `-SandLegacyBox` for the earlier box scene.
+
+The large landscape uses measured relief from the LROC `NAC_DTM_NOBILE03`
+product plus clearly documented designed features. It is not presented as one
+literal surveyed site, and only the central patch is granular physics. See
+[source, architecture and limitations](Docs/LunarWorld.md).
+
 ## Android excavator first playable
 
 The Android version opens directly in the excavator with one left drive stick
@@ -70,8 +83,9 @@ granted by this upload; Unreal Engine and third-party components keep their own 
 
 ## Project and milestone notes
 
-Current playtest: **Dig It Up — Easy**, a 5 × 5 m sandbox with 1.5 m of active sand.
-Uncover approximately 10 × 10 cm of the red floor; Victory appears 3 seconds later.
+Current playtest: **Dig It Up — Lunar Field**, a 10 × 10 m active regolith patch
+inside a kilometre-scale lunar context. Uncover approximately 10 × 10 cm of the
+buried survey marker; Victory appears 3 seconds later.
 Continue Digging preserves the excavation, or Exit Game ends the session.
 See `Docs/EasyLevel.md` for the current level and acceptance evidence. The baseline
 and earlier milestone measurements below describe the original 2 m prototype.
@@ -101,11 +115,10 @@ functional transport does not establish real-machine performance.
 ## Baseline target
 
 - Windows PC, DX12 and Shader Model 6
-- One 5 m x 5 m x 3 m sandbox
-- Four rigid retaining walls; the upper boundary remains open
-- Initial sand volume occupies the lower 2 m; every layer remains excavatable
-- Open upper region with 1 m initial headroom
-- 6.25 cm dense full-volume physics cells (80 x 80 x 32 material layout, 204,800 points)
+- One 10 m x 10 m fully granular excavation patch inside 1,024 m static context
+- No visible retaining walls in the lunar profile; the upper boundary remains open
+- Nominal 1.2 m granular depth with local highland and crater relief
+- 6.25 cm dense full-volume physics cells by default
 - 5 cm independent surface-reconstruction voxels
 - 30 Hz outer physics, 300 Hz internal MPM steps, 60 FPS game rendering and 10 Hz asynchronous bulk-surface updates
 - RTX 4070 Laptop 8 GB development target
@@ -127,8 +140,8 @@ the help panel; **Esc** exits the packaged game.
 
 The workspace name contains non-ASCII characters, which the current MSVC/UE PCH path can mis-handle. Project generation and command-line builds therefore use the existing directory junction `D:\UEProjects\SandExcavator`; it points at this same workspace and does not duplicate source files.
 
-The lightweight Entry map spawns the 5 m x 5 m x 3 m sandbox, outdoor lighting,
-continuous sand surface and excavator automatically. In editor tooling, a **Sand
+The lightweight Entry map spawns the lunar field, continuous regolith surface
+and excavator automatically. In editor tooling, a **Sand
 Simulation Volume** actor still exposes the full domain, initial fill and SI-unit
 material/solver parameters.
 

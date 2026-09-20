@@ -24,6 +24,8 @@
 #include "SandHUD.h"
 #include "SandLevelSettings.h"
 #include "SandFloorExposure.h"
+#include "SandLunarTerrain.h"
+#include "SandLunarWorldActor.h"
 #include "Misc/CommandLine.h"
 #include "Misc/Parse.h"
 #include "Misc/Paths.h"
@@ -58,8 +60,24 @@ void ASandPreviewGameMode::BeginPlay()
         bChangedFixedClock=true; bPreviousFixedClock=FApp::UseFixedTimeStep(); PreviousFixedDelta=FApp::GetFixedDeltaTime();
         FApp::SetUseFixedTimeStep(true); FApp::SetFixedDeltaTime(Sand::MPM::CouplingStepSeconds());
     }
-    const float SandDepthCm = GetDefault<USandLevelSettings>()->SandDepthMeters * 100.0f;
+    const USandLevelSettings* LevelSettings = GetDefault<USandLevelSettings>();
+    const bool bBench = FParse::Param(FCommandLine::Get(),TEXT("SandRoadheaderBench"));
+    const bool bLegacyAcceptance =
+        FParse::Param(FCommandLine::Get(),TEXT("SandVictoryTest")) ||
+        FParse::Param(FCommandLine::Get(),TEXT("SandBoundaryTest")) ||
+        FParse::Param(FCommandLine::Get(),TEXT("SandBoomRaiseTest")) ||
+        FParse::Param(FCommandLine::Get(),TEXT("SandSlopeCoastTest"));
+    const bool bLunarWorld = LevelSettings->bLunarWorld &&
+        !FParse::Param(FCommandLine::Get(),TEXT("SandLegacyBox")) && !bBench && !bLegacyAcceptance;
+    const float SandDepthCm = (bLunarWorld ? LevelSettings->SandDepthMeters : 1.5f) * 100.0f;
+    const float ActiveWidthMeters = bLunarWorld ? LevelSettings->ActiveWidthMeters : 5.0f;
     World->SpawnActor<ASandCollapseSurfacePreviewActor>(FVector::ZeroVector, FRotator::ZeroRotator);
+    if (bLunarWorld)
+    {
+        World->SpawnActor<ASandLunarWorldActor>(FVector::ZeroVector, FRotator::ZeroRotator);
+        UE_LOG(LogTemp, Display, TEXT("LUNAR_WORLD activeMPM=%.1fm macroTerrain=%.0fm source=NAC_DTM_NOBILE03 gravity=Earth-gameplay"),
+            ActiveWidthMeters, LevelSettings->LunarLandscapeSizeMeters);
+    }
 
     UStaticMesh* CubeMesh = LoadObject<UStaticMesh>(nullptr, TEXT("/Engine/BasicShapes/Cube.Cube"));
     UMaterialInterface* FloorMaterial = LoadObject<UMaterialInterface>(
@@ -100,7 +118,7 @@ void ASandPreviewGameMode::BeginPlay()
             FRotator::ZeroRotator);
         Floor->GetStaticMeshComponent()->SetStaticMesh(CubeMesh);
         Floor->GetStaticMeshComponent()->SetMobility(EComponentMobility::Movable);
-        Floor->GetStaticMeshComponent()->SetWorldScale3D(FVector(5.4, 5.4, 0.08));
+        Floor->GetStaticMeshComponent()->SetWorldScale3D(FVector(ActiveWidthMeters + 0.4f, ActiveWidthMeters + 0.4f, 0.08));
         Floor->GetStaticMeshComponent()->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
         Floor->GetStaticMeshComponent()->SetCollisionProfileName(TEXT("BlockAll"));
         if (FloorMaterial != nullptr)
@@ -109,32 +127,44 @@ void ASandPreviewGameMode::BeginPlay()
             Floor->GetStaticMeshComponent()->SetMaterial(0, GoalMaterial ? GoalMaterial : FloorMaterial);
             if (auto* Red = Floor->GetStaticMeshComponent()->CreateAndSetMaterialInstanceDynamic(0))
             {
-                const FLinearColor RedColor = FLinearColor::FromSRGBColor(FColor(235,24,35));
-                Red->SetVectorParameterValue(TEXT("Color"), RedColor);
-                Red->SetVectorParameterValue(TEXT("DiffuseColor"), RedColor);
+                const FLinearColor MarkerColor = bLunarWorld
+                    ? FLinearColor::FromSRGBColor(FColor(245,171,35))
+                    : FLinearColor::FromSRGBColor(FColor(235,24,35));
+                Red->SetVectorParameterValue(TEXT("Color"), MarkerColor);
+                Red->SetVectorParameterValue(TEXT("DiffuseColor"), MarkerColor);
             }
         }
 
         // Four physical retaining walls cover the entire two-metre active sand
         // depth and extend 25 cm above the initial surface. The top remains open.
-        const FLinearColor WallColor = FLinearColor::FromSRGBColor(FColor(65, 72, 84));
-        const float WallZ = (SandDepthCm + 20.0f) * 0.5f;
-        const float WallHeightMeters = (SandDepthCm + 30.0f) / 100.0f;
-        ConfigureContainerBox(World, FVector(-256.0, 0.0, WallZ), FVector(0.12,5.24,WallHeightMeters), WallColor);
-        ConfigureContainerBox(World, FVector(256.0, 0.0, WallZ), FVector(0.12,5.24,WallHeightMeters), WallColor);
-        ConfigureContainerBox(World, FVector(0.0, -256.0, WallZ), FVector(5.24,0.12,WallHeightMeters), WallColor);
-        ConfigureContainerBox(World, FVector(0.0, 256.0, WallZ), FVector(5.24,0.12,WallHeightMeters), WallColor);
+        if (!bLunarWorld)
+        {
+            const FLinearColor WallColor = FLinearColor::FromSRGBColor(FColor(65, 72, 84));
+            const float WallZ = (SandDepthCm + 20.0f) * 0.5f;
+            const float WallHeightMeters = (SandDepthCm + 30.0f) / 100.0f;
+            ConfigureContainerBox(World, FVector(-256.0, 0.0, WallZ), FVector(0.12,5.24,WallHeightMeters), WallColor);
+            ConfigureContainerBox(World, FVector(256.0, 0.0, WallZ), FVector(0.12,5.24,WallHeightMeters), WallColor);
+            ConfigureContainerBox(World, FVector(0.0, -256.0, WallZ), FVector(5.24,0.12,WallHeightMeters), WallColor);
+            ConfigureContainerBox(World, FVector(0.0, 256.0, WallZ), FVector(5.24,0.12,WallHeightMeters), WallColor);
+        }
     }
 
     ADirectionalLight* Sun = World->SpawnActor<ADirectionalLight>(
         FVector(0.0, 0.0, 200.0),
-        FRotator(-48.0, -32.0, 0.0));
-    Sun->GetLightComponent()->SetIntensity(2.8f);
+        bLunarWorld ? FRotator(-11.0, -32.0, 0.0) : FRotator(-48.0, -32.0, 0.0));
+    // Directional lights use lux. A solar-scale value prevents auto exposure
+    // from lifting the grey surface toward white while retaining hard lunar
+    // shadow contrast.
+    Sun->GetLightComponent()->SetIntensity(bLunarWorld ? 75000.0f : 2.8f);
+    if (bLunarWorld)
+    {
+        Sun->GetLightComponent()->SetLightColor(FLinearColor(1.0f,0.965f,0.90f));
+    }
     Sun->GetLightComponent()->SetMobility(EComponentMobility::Movable);
     if (UDirectionalLightComponent* SunComponent =
         Cast<UDirectionalLightComponent>(Sun->GetLightComponent()))
     {
-        SunComponent->SetAtmosphereSunLight(true);
+        SunComponent->SetAtmosphereSunLight(!bLunarWorld);
     }
 
     // The lightweight Entry map has no authored environment. Spawn a real
@@ -143,25 +173,31 @@ void ASandPreviewGameMode::BeginPlay()
 #if !PLATFORM_ANDROID
     // Mobile SkyAtmosphere requires a sky mesh/material that this procedural
     // level does not provide. Avoid the on-screen mobile renderer error.
-    World->SpawnActor<ASkyAtmosphere>(FVector::ZeroVector, FRotator::ZeroRotator);
+    if (!bLunarWorld)
+    {
+        World->SpawnActor<ASkyAtmosphere>(FVector::ZeroVector, FRotator::ZeroRotator);
+    }
 #endif
     ASkyLight* SkyLight = World->SpawnActor<ASkyLight>(
         FVector(0.0, 0.0, 250.0), FRotator::ZeroRotator);
     SkyLight->GetLightComponent()->SetMobility(EComponentMobility::Movable);
-    SkyLight->GetLightComponent()->SetIntensity(0.65f);
+    SkyLight->GetLightComponent()->SetIntensity(bLunarWorld ? 0.08f : 0.65f);
     SkyLight->GetLightComponent()->RecaptureSky();
 
-    AExponentialHeightFog* HorizonFog = World->SpawnActor<AExponentialHeightFog>(
-        FVector(0.0, 0.0, -100.0), FRotator::ZeroRotator);
-    HorizonFog->GetComponent()->SetFogDensity(0.0025f);
-    HorizonFog->GetComponent()->SetFogHeightFalloff(0.18f);
-    HorizonFog->GetComponent()->SetFogInscatteringColor(
-        FLinearColor::FromSRGBColor(FColor(155, 184, 207)));
-    HorizonFog->GetComponent()->SetStartDistance(700.0f);
+    if (!bLunarWorld)
+    {
+        AExponentialHeightFog* HorizonFog = World->SpawnActor<AExponentialHeightFog>(
+            FVector(0.0, 0.0, -100.0), FRotator::ZeroRotator);
+        HorizonFog->GetComponent()->SetFogDensity(0.0025f);
+        HorizonFog->GetComponent()->SetFogHeightFalloff(0.18f);
+        HorizonFog->GetComponent()->SetFogInscatteringColor(
+            FLinearColor::FromSRGBColor(FColor(155, 184, 207)));
+        HorizonFog->GetComponent()->SetStartDistance(700.0f);
+    }
 
     APointLight* Fill = World->SpawnActor<APointLight>(FVector(40.0, -80.0, 180.0), FRotator::ZeroRotator);
     Fill->GetLightComponent()->SetMobility(EComponentMobility::Movable);
-    Fill->GetLightComponent()->SetIntensity(120.0f);
+    Fill->GetLightComponent()->SetIntensity(bLunarWorld ? 16.0f : 120.0f);
 
     if (APlayerController* PlayerController = World->GetFirstPlayerController())
     {
@@ -199,7 +235,16 @@ void ASandPreviewGameMode::SelectVehicle(bool bRoadheader)
     if(!PC) return;
     const bool Bench=FParse::Param(FCommandLine::Get(),TEXT("SandRoadheaderBench"));
     const bool Fixture=FParse::Param(FCommandLine::Get(),TEXT("SandVictoryTest"));
-    FVector Position=Bench?FVector(0,0,36):Fixture?FVector(-210,-160,20.5):FVector(-100,0,GetDefault<USandLevelSettings>()->SandDepthMeters*100+8);
+    const USandLevelSettings* Settings = GetDefault<USandLevelSettings>();
+    const bool Lunar = Settings->bLunarWorld && !FParse::Param(FCommandLine::Get(),TEXT("SandLegacyBox")) && !Bench && !Fixture &&
+        !FParse::Param(FCommandLine::Get(),TEXT("SandBoundaryTest")) &&
+        !FParse::Param(FCommandLine::Get(),TEXT("SandBoomRaiseTest")) &&
+        !FParse::Param(FCommandLine::Get(),TEXT("SandSlopeCoastTest"));
+    const float SpawnX = -1.0f;
+    const float SpawnHeight = Lunar
+        ? Sand::Lunar::ActiveSurfaceHeightMeters(SpawnX,0.0f,Settings->SandDepthMeters,Settings->ActiveWidthMeters)
+        : 1.5f;
+    FVector Position=Bench?FVector(0,0,36):Fixture?FVector(-210,-160,20.5):FVector(SpawnX*100,0,SpawnHeight*100+8);
     FActorSpawnParameters Params;
     Params.SpawnCollisionHandlingOverride=ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
     auto* Pawn=GetWorld()->SpawnActor<ASandExcavatorPawn>(bRoadheader?ASandRoadheaderPawn::StaticClass():ASandExcavatorPawn::StaticClass(),Position,FRotator::ZeroRotator,Params);
@@ -228,11 +273,19 @@ void ASandPreviewGameMode::CheckExposedFloor(const TArray<FVector>& Vertices, co
     if (Vertices.IsEmpty() || Indices.IsEmpty() || FirstExposureTime >= 0.0f || GetWorld()->GetTimeSeconds()-LastExposureCheck < 0.25f) { return; }
     LastExposureCheck = GetWorld()->GetTimeSeconds();
     FVector2D Center;
-    if (Sand::Goal::FindOpening(Vertices,Indices,GetDefault<USandLevelSettings>()->ExposedSideCentimeters,Center,&InitialFloorCoverage))
+    const USandLevelSettings* Settings = GetDefault<USandLevelSettings>();
+    const bool Lunar = Settings->bLunarWorld && !FParse::Param(FCommandLine::Get(),TEXT("SandLegacyBox")) &&
+        !FParse::Param(FCommandLine::Get(),TEXT("SandVictoryTest")) &&
+        !FParse::Param(FCommandLine::Get(),TEXT("SandBoundaryTest")) &&
+        !FParse::Param(FCommandLine::Get(),TEXT("SandBoomRaiseTest")) &&
+        !FParse::Param(FCommandLine::Get(),TEXT("SandSlopeCoastTest"));
+    const float ActiveWidthCm = Lunar
+        ? Settings->ActiveWidthMeters * 100.0f : 500.0f;
+    if (Sand::Goal::FindOpening(Vertices,Indices,Settings->ExposedSideCentimeters,Center,&InitialFloorCoverage,ActiveWidthCm))
     {
         FirstExposureTime = GetWorld()->GetTimeSeconds();
-        UE_LOG(LogTemp,Display,TEXT("DIG IT UP: red floor exposed at (%.1f,%.1f), countdown %.1f seconds, time %.3f"),
-            Center.X,Center.Y,GetDefault<USandLevelSettings>()->VictoryDelaySeconds,FirstExposureTime);
+        UE_LOG(LogTemp,Display,TEXT("DIG IT UP: %s exposed at (%.1f,%.1f), countdown %.1f seconds, time %.3f"),
+            Lunar ? TEXT("survey marker") : TEXT("red floor"),Center.X,Center.Y,Settings->VictoryDelaySeconds,FirstExposureTime);
     }
 }
 

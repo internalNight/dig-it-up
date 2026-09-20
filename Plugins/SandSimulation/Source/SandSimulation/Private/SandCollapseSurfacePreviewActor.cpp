@@ -10,6 +10,7 @@
 #include "EngineUtils.h"
 #include "Misc/CommandLine.h"
 #include "Misc/Parse.h"
+#include "ProceduralMeshComponent.h"
 
 ASandCollapseSurfacePreviewActor::ASandCollapseSurfacePreviewActor()
 {
@@ -64,12 +65,24 @@ void ASandCollapseSurfacePreviewActor::BeginPlay()
         VoxelSizeMeters = 0.08f;
         KernelRadiusMeters = 0.14f;
     }
+    else if (SimulationState->PhysicalMaximum.X - SimulationState->PhysicalMinimum.X > 8.0f)
+    {
+        // The 10 m lunar patch uses a 6.25 cm physical grid by default. Keep
+        // the visible surface slightly coarser so its 4x plan area remains
+        // practical on the project's 8 GB target GPU.
+        VoxelSizeMeters = 0.075f;
+        KernelRadiusMeters = 0.12f;
+        // The finite MPM volume is visually continued by the transition mesh.
+        // Its closed marching-cubes side faces must not cast a square shadow.
+        SurfaceMesh->SetCastShadow(false);
+    }
     // Acceptance fixture: a sloping corner excavation with two intact bottom layers.
     // Removed material is stacked in the upper air region, conserving mass.
     if (FParse::Param(FCommandLine::Get(), TEXT("SandVictoryTest")))
     {
         int32 Relocated = 0;
-        const float Depth = GetDefault<USandLevelSettings>()->SandDepthMeters;
+        const float Depth = SimulationState->PhysicalMaximum.X - SimulationState->PhysicalMinimum.X > 8.0f
+            ? GetDefault<USandLevelSettings>()->SandDepthMeters : 1.5f;
         for (auto& Particle : SimulationState->InitialParticles)
         {
             const FVector3f P(Particle.PositionAndMass);

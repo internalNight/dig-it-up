@@ -256,6 +256,33 @@ ASandExcavatorPawn::ASandExcavatorPawn()
 void ASandExcavatorPawn::BeginPlay()
 {
     Super::BeginPlay();
+    if (GetDefault<USandLevelSettings>()->bLunarWorld &&
+        !FParse::Param(FCommandLine::Get(),TEXT("SandLegacyBox")) &&
+        !FParse::Param(FCommandLine::Get(),TEXT("SandRoadheaderBench")) &&
+        !FParse::Param(FCommandLine::Get(),TEXT("SandVictoryTest")) &&
+        !FParse::Param(FCommandLine::Get(),TEXT("SandBoundaryTest")) &&
+        !FParse::Param(FCommandLine::Get(),TEXT("SandBoomRaiseTest")) &&
+        !FParse::Param(FCommandLine::Get(),TEXT("SandSlopeCoastTest")))
+    {
+        // Frame the expanded excavation patch and its near-field relief rather
+        // than retaining the tight camera designed for the five-metre box.
+        bLunarOverview = FParse::Param(FCommandLine::Get(),TEXT("SandLunarOverview"));
+        CameraBoom->TargetArmLength = bLunarOverview ? 40000.0f : 500.0f;
+        CameraBoom->SetRelativeRotation(bLunarOverview
+            ? FRotator(-55.0f,-58.0f,0.0f) : FRotator(-28.0f,-58.0f,0.0f));
+        CameraBoom->bDoCollisionTest = !bLunarOverview;
+        FollowCamera->FieldOfView = bLunarOverview ? 75.0f : 65.0f;
+        FollowCamera->PostProcessBlendWeight = 1.0f;
+        FPostProcessSettings& Exposure = FollowCamera->PostProcessSettings;
+        Exposure.bOverride_AutoExposureMethod = true;
+        Exposure.AutoExposureMethod = AEM_Manual;
+        Exposure.bOverride_CameraISO = true;
+        Exposure.CameraISO = 100.0f;
+        Exposure.bOverride_CameraShutterSpeed = true;
+        Exposure.CameraShutterSpeed = 100.0f;
+        Exposure.bOverride_DepthOfFieldFstop = true;
+        Exposure.DepthOfFieldFstop = 22.0f;
+    }
     for (int32 Index = 0; Index < 4; ++Index)
     {
         SandSupportHeightsCentimeters[Index] = GetActorLocation().Z - 8.0f;
@@ -300,6 +327,21 @@ void ASandExcavatorPawn::Tick(const float DeltaSeconds)
     if (PlayerController == nullptr && !bAutopilotDemo)
     {
         return;
+    }
+    const bool bLunarWorld = GetDefault<USandLevelSettings>()->bLunarWorld &&
+        !FParse::Param(FCommandLine::Get(),TEXT("SandLegacyBox")) &&
+        !FParse::Param(FCommandLine::Get(),TEXT("SandVictoryTest")) &&
+        !FParse::Param(FCommandLine::Get(),TEXT("SandBoundaryTest")) &&
+        !FParse::Param(FCommandLine::Get(),TEXT("SandBoomRaiseTest")) &&
+        !FParse::Param(FCommandLine::Get(),TEXT("SandSlopeCoastTest"));
+    if (PlayerController && bLunarWorld && PlayerController->WasInputKeyJustPressed(EKeys::C))
+    {
+        bLunarOverview = !bLunarOverview;
+        CameraBoom->TargetArmLength = bLunarOverview ? 40000.0f : 500.0f;
+        CameraBoom->SetRelativeRotation(bLunarOverview
+            ? FRotator(-55.0f,-58.0f,0.0f) : FRotator(-28.0f,-58.0f,0.0f));
+        CameraBoom->bDoCollisionTest = !bLunarOverview;
+        FollowCamera->FieldOfView = bLunarOverview ? 75.0f : 65.0f;
     }
 
     float Throttle = 0.0f;

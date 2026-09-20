@@ -464,7 +464,7 @@ ASandSurfacePreviewActor::ASandSurfacePreviewActor()
     SurfaceMesh->SetCastShadow(true);
 
     static ConstructorHelpers::FObjectFinder<UMaterialInterface> VertexColorMaterial(
-        TEXT("/Game/Materials/M_RegolithFine.M_RegolithFine"));
+        TEXT("/Engine/EngineDebugMaterials/VertexColorMaterial.VertexColorMaterial"));
     if (VertexColorMaterial.Succeeded())
     {
         SurfaceMesh->SetMaterial(0, VertexColorMaterial.Object);

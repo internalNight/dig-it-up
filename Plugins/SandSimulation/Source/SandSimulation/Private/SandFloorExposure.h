@@ -6,10 +6,13 @@ namespace Sand::Goal
 // Sample vertical visibility of the red floor from the actual 3D surface.
 // Initial seam pixels can be excluded without forbidding excavation near walls.
 inline bool FindOpening(const TArray<FVector>& Vertices, const TArray<int32>& Indices,
-    float RequiredSideCm, FVector2D& OutCenter, TArray<uint8>* InitialCoverage = nullptr)
+    float RequiredSideCm, FVector2D& OutCenter, TArray<uint8>* InitialCoverage = nullptr,
+    float ActiveWidthCm = 500.0f)
 {
-    constexpr float Min = -250.0f, Step = 2.5f;
-    constexpr int32 N = 200;
+    constexpr float Step = 2.5f;
+    const float Width = FMath::Max(ActiveWidthCm, Step);
+    const float Min = -0.5f * Width;
+    const int32 N = FMath::Max(1, FMath::CeilToInt(Width / Step));
     TArray<uint8> Blocked;
     Blocked.Init(0, N * N);
     for (int32 I = 0; I + 2 < Indices.Num(); I += 3)
