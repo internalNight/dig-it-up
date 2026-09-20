@@ -347,10 +347,10 @@ TSharedRef<FRuntimeSimulationState, ESPMode::ThreadSafe> CreateRuntimeSandboxSim
         !FParse::Param(FCommandLine::Get(), TEXT("SandLegacyBox")) && !bBench && !bLegacyAcceptance;
     if (bLunarWorld && Quality.IsEmpty())
     {
-        // 128 cells span the ten-metre resident window exactly. The matching
-        // five-metre chunks can therefore be streamed without overlaps or
-        // gaps, while retaining centimetre-scale bucket/track interaction.
-        State->CellSize = 0.078125f;
+        // Fifty cells span each five-metre streaming chunk exactly. The
+        // 15-metre resident window is wide enough to hide hand-offs while the
+        // 10 cm grid keeps the GPU particle count near the former 10 m cost.
+        State->CellSize = 0.10f;
     }
     if (bBench && Quality.IsEmpty()) State->CellSize = 0.025f;
     State->InternalDeltaSeconds = 1.0f / (State->CellSize <= 0.025f ? 1200.0f : State->CellSize <= 0.03125f ? 900.0f : State->CellSize <= 0.05f ? 600.0f : 300.0f);

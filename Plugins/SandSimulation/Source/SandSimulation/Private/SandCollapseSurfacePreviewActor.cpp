@@ -4,6 +4,7 @@
 #include "SandExcavatorPawn.h"
 #include "SandRoadheaderPawn.h"
 #include "SandLevelSettings.h"
+#include "SandLunarTerrain.h"
 #include "SandLunarWorldActor.h"
 #include "SandPreviewGameMode.h"
 
@@ -18,23 +19,36 @@ struct FLunarChunkCache
     using FParticleData = Sand::MPM::FParticleData;
 
     FVector2f ActiveCenterMeters = FVector2f::ZeroVector;
-    float ActiveWidthMeters = 10.0f;
+    float ActiveWidthMeters = 15.0f;
     float ChunkWidthMeters = 5.0f;
     float PlayableWidthMeters = 100.0f;
     float SandDepthMeters = 1.2f;
     float DensityKgPerM3 = 1550.0f;
     float FrictionAngleDegrees = 40.0f;
-    int32 MaximumCachedChunks = 64;
+    // A 100 m field plus the half-window edge buffer needs fewer than 512
+    // five-metre chunks. Keeping all of them preserves the complete session
+    // history; GPU residency is still limited to the local 3 x 3 set.
+    int32 MaximumCachedChunks = 512;
     int32 ShiftCount = 0;
     TMap<FIntPoint,TArray<FParticleData>> Chunks;
     TArray<FIntPoint> LeastRecentlyUsed;
 
+    int32 ResidentChunksPerAxis() const
+    {
+        return FMath::Max(1,FMath::RoundToInt(
+            ActiveWidthMeters / ChunkWidthMeters));
+    }
+
+    float ChunkOriginMeters() const
+    {
+        return -0.5f * ActiveWidthMeters;
+    }
+
     FIntPoint MinimumResidentChunk(const FVector2f Center) const
     {
-        const float Half = 0.5f * ActiveWidthMeters;
         return FIntPoint(
-            FMath::RoundToInt((Center.X - Half) / ChunkWidthMeters),
-            FMath::RoundToInt((Center.Y - Half) / ChunkWidthMeters));
+            FMath::RoundToInt(Center.X / ChunkWidthMeters),
+            FMath::RoundToInt(Center.Y / ChunkWidthMeters));
     }
 
     void Touch(const FIntPoint Key)
@@ -46,9 +60,10 @@ struct FLunarChunkCache
     void StoreResidentWindow(const TArray<FParticleData>& Particles)
     {
         const FIntPoint MinimumKey = MinimumResidentChunk(ActiveCenterMeters);
-        for (int32 Y = 0; Y < 2; ++Y)
+        const int32 ChunkCount = ResidentChunksPerAxis();
+        for (int32 Y = 0; Y < ChunkCount; ++Y)
         {
-            for (int32 X = 0; X < 2; ++X)
+            for (int32 X = 0; X < ChunkCount; ++X)
             {
                 const FIntPoint Key = MinimumKey + FIntPoint(X,Y);
                 Chunks.FindOrAdd(Key).Reset();
@@ -59,10 +74,12 @@ struct FLunarChunkCache
         {
             const FVector3f Position(Particle.PositionAndMass);
             const FIntPoint Key(
-                FMath::Clamp(FMath::FloorToInt(Position.X / ChunkWidthMeters),
-                    MinimumKey.X, MinimumKey.X + 1),
-                FMath::Clamp(FMath::FloorToInt(Position.Y / ChunkWidthMeters),
-                    MinimumKey.Y, MinimumKey.Y + 1));
+                FMath::Clamp(FMath::FloorToInt(
+                    (Position.X - ChunkOriginMeters()) / ChunkWidthMeters),
+                    MinimumKey.X, MinimumKey.X + ChunkCount - 1),
+                FMath::Clamp(FMath::FloorToInt(
+                    (Position.Y - ChunkOriginMeters()) / ChunkWidthMeters),
+                    MinimumKey.Y, MinimumKey.Y + ChunkCount - 1));
             Chunks.FindChecked(Key).Add(Particle);
         }
     }
@@ -71,9 +88,10 @@ struct FLunarChunkCache
     {
         TArray<FParticleData> Result;
         const FIntPoint MinimumKey = MinimumResidentChunk(NewCenter);
-        for (int32 Y = 0; Y < 2; ++Y)
+        const int32 ChunkCount = ResidentChunksPerAxis();
+        for (int32 Y = 0; Y < ChunkCount; ++Y)
         {
-            for (int32 X = 0; X < 2; ++X)
+            for (int32 X = 0; X < ChunkCount; ++X)
             {
                 const FIntPoint Key = MinimumKey + FIntPoint(X,Y);
                 if (TArray<FParticleData>* Saved = Chunks.Find(Key))
@@ -86,8 +104,8 @@ struct FLunarChunkCache
                 else
                 {
                     const FVector2f ChunkCenter(
-                        (Key.X + 0.5f) * ChunkWidthMeters,
-                        (Key.Y + 0.5f) * ChunkWidthMeters);
+                        ChunkOriginMeters() + (Key.X + 0.5f) * ChunkWidthMeters,
+                        ChunkOriginMeters() + (Key.Y + 0.5f) * ChunkWidthMeters);
                     Result.Append(Sand::MPM::MakeInitialSandbox(
                         CellSize,DensityKgPerM3,FrictionAngleDegrees,
                         SandDepthMeters,ChunkWidthMeters,true,ChunkCenter,
@@ -104,6 +122,53 @@ struct FLunarChunkCache
             Chunks.Remove(Oldest);
         }
         return Result;
+    }
+
+    TArray<float> BuildHeightfield(
+        const FIntPoint Key,
+        const int32 Resolution,
+        const float CellSize) const
+    {
+        TArray<float> Heights;
+        Heights.Init(-TNumericLimits<float>::Max(),Resolution * Resolution);
+        const float Spacing = ChunkWidthMeters / (Resolution - 1);
+        const float MinimumX = ChunkOriginMeters() + Key.X * ChunkWidthMeters;
+        const float MinimumY = ChunkOriginMeters() + Key.Y * ChunkWidthMeters;
+        if (const TArray<FParticleData>* Chunk = Chunks.Find(Key))
+        {
+            for (const FParticleData& Particle : *Chunk)
+            {
+                if (Particle.BucketLocalAndCarried.W > 0.5f)
+                {
+                    continue;
+                }
+                const FVector3f Position(Particle.PositionAndMass);
+                const int32 X = FMath::Clamp(FMath::RoundToInt(
+                    (Position.X - MinimumX) / Spacing),0,Resolution - 1);
+                const int32 Y = FMath::Clamp(FMath::RoundToInt(
+                    (Position.Y - MinimumY) / Spacing),0,Resolution - 1);
+                float& Height = Heights[X + Y * Resolution];
+                Height = FMath::Max(Height,Position.Z + 0.42f * CellSize);
+            }
+        }
+        for (int32 Y = 0; Y < Resolution; ++Y)
+        {
+            for (int32 X = 0; X < Resolution; ++X)
+            {
+                float& Height = Heights[X + Y * Resolution];
+                if (Height <= -TNumericLimits<float>::Max() * 0.5f)
+                {
+                    const bool bBoundary = X == 0 || Y == 0 ||
+                        X == Resolution - 1 || Y == Resolution - 1;
+                    Height = bBoundary
+                        ? Sand::Lunar::ActiveSurfaceHeightMeters(
+                            MinimumX + X * Spacing,MinimumY + Y * Spacing,
+                            SandDepthMeters,PlayableWidthMeters)
+                        : 0.02f;
+                }
+            }
+        }
+        return Heights;
     }
 };
 
@@ -164,7 +229,7 @@ void ASandCollapseSurfacePreviewActor::BeginPlay()
     {
         LunarChunkCache = MakeShared<FLunarChunkCache>();
         LunarChunkCache->ActiveWidthMeters = ResidentWidth;
-        LunarChunkCache->ChunkWidthMeters = 0.5f * ResidentWidth;
+        LunarChunkCache->ChunkWidthMeters = 5.0f;
         LunarChunkCache->PlayableWidthMeters = LevelSettings->LunarPlayableWidthMeters;
         LunarChunkCache->SandDepthMeters = LevelSettings->SandDepthMeters;
         LunarChunkCache->DensityKgPerM3 = Material.BulkDensityKgPerM3;
@@ -184,22 +249,22 @@ void ASandCollapseSurfacePreviewActor::BeginPlay()
             SupportHeightGridCellMeters) + 1);
     SupportHeightGridCentimeters.Init(-TNumericLimits<float>::Max(),
         SupportHeightGridSize.X * SupportHeightGridSize.Y);
-    if (SimulationState->CellSize >= 0.099f)
+    if (SimulationState->PhysicalMaximum.X - SimulationState->PhysicalMinimum.X > 8.0f)
+    {
+        // The 15 m lunar window uses a 10 cm physical grid by default. A
+        // 12 cm display grid keeps async surface work near the former 10 m
+        // cost while the physical window grows by 2.25x in plan area.
+        VoxelSizeMeters = 0.12f;
+        KernelRadiusMeters = 0.18f;
+        // The finite MPM volume is visually continued by the transition mesh.
+        // Its closed marching-cubes side faces must not cast a square shadow.
+        SurfaceMesh->SetCastShadow(false);
+    }
+    else if (SimulationState->CellSize >= 0.099f)
     {
         // Match the mobile surface kernel to the coarser physical grid.
         VoxelSizeMeters = 0.08f;
         KernelRadiusMeters = 0.14f;
-    }
-    else if (SimulationState->PhysicalMaximum.X - SimulationState->PhysicalMinimum.X > 8.0f)
-    {
-        // The 10 m lunar window uses a 7.8125 cm physical grid by default. Keep
-        // the visible surface slightly coarser so its 4x plan area remains
-        // practical on the project's 8 GB target GPU.
-        VoxelSizeMeters = 0.09f;
-        KernelRadiusMeters = 0.145f;
-        // The finite MPM volume is visually continued by the transition mesh.
-        // Its closed marching-cubes side faces must not cast a square shadow.
-        SurfaceMesh->SetCastShadow(false);
     }
     // Acceptance fixture: a sloping corner excavation with two intact bottom layers.
     // Removed material is stacked in the upper air region, conserving mass.
@@ -271,6 +336,16 @@ void ASandCollapseSurfacePreviewActor::BeginPlay()
 void ASandCollapseSurfacePreviewActor::OnSurfaceMeshUpdated(
     const TArray<FVector>& Vertices, const TArray<int32>& Indices)
 {
+    if (bHasPendingLunarWindowCenter)
+    {
+        for (TActorIterator<ASandLunarWorldActor> It(GetWorld()); It; ++It)
+        {
+            It->SetActiveWindowCenterMeters(PendingLunarWindowCenterMeters);
+        }
+        UE_LOG(LogTemp,Display,TEXT("LUNAR_WINDOW_VISUAL_COMMIT center=(%.1f,%.1f)m"),
+            PendingLunarWindowCenterMeters.X,PendingLunarWindowCenterMeters.Y);
+        bHasPendingLunarWindowCenter = false;
+    }
     if (Excavator.IsValid())
     {
         Excavator->UpdateVisibleSandSupport(Vertices, Indices);
@@ -591,8 +666,9 @@ void ASandCollapseSurfacePreviewActor::Tick(const float DeltaSeconds)
                     FLunarChunkCache& Cache = *WeakThis->LunarChunkCache;
                     const FVector ExcavatorLocationMeters =
                         WeakExcavator->GetActorLocation() / 100.0;
-                    const float MaximumCenter = 0.5f * (
-                        Cache.PlayableWidthMeters - Cache.ActiveWidthMeters);
+                    const float MaximumCenter = Cache.ChunkWidthMeters * FMath::CeilToFloat(
+                        0.5f * (Cache.PlayableWidthMeters - Cache.ActiveWidthMeters) /
+                        Cache.ChunkWidthMeters);
                     const FVector2f RequestedCenter(
                         FMath::Clamp(Cache.ChunkWidthMeters * FMath::RoundToInt(
                             ExcavatorLocationMeters.X / Cache.ChunkWidthMeters),
@@ -604,6 +680,26 @@ void ASandCollapseSurfacePreviewActor::Tick(const float DeltaSeconds)
                     {
                         const FVector2f PreviousCenter = Cache.ActiveCenterMeters;
                         Cache.StoreResidentWindow(Particles);
+                        constexpr int32 DeformationResolution = 33;
+                        const float DeformationSpacing = Cache.ChunkWidthMeters /
+                            (DeformationResolution - 1);
+                        const FIntPoint PreviousMinimumKey =
+                            Cache.MinimumResidentChunk(PreviousCenter);
+                        for (TActorIterator<ASandLunarWorldActor> It(
+                            WeakThis->GetWorld()); It; ++It)
+                        {
+                            for (int32 Y = 0; Y < Cache.ResidentChunksPerAxis(); ++Y)
+                            {
+                                for (int32 X = 0; X < Cache.ResidentChunksPerAxis(); ++X)
+                                {
+                                    const FIntPoint Key = PreviousMinimumKey + FIntPoint(X,Y);
+                                    It->CacheDeformationChunk(Key,
+                                        Cache.BuildHeightfield(Key,DeformationResolution,
+                                            WeakThis->SimulationState->CellSize),
+                                        DeformationResolution,DeformationSpacing);
+                                }
+                            }
+                        }
                         TArray<Sand::MPM::FParticleData> NewParticles =
                             Cache.LoadWindow(RequestedCenter,WeakThis->SimulationState->CellSize);
                         const int32 ResidentParticleCount = NewParticles.Num();
@@ -626,12 +722,11 @@ void ASandCollapseSurfacePreviewActor::Tick(const float DeltaSeconds)
                             -TNumericLimits<float>::Max(),
                             WeakThis->SupportHeightGridSize.X *
                                 WeakThis->SupportHeightGridSize.Y);
-                        WeakThis->SurfaceMesh->ClearMeshSection(0);
-                        for (TActorIterator<ASandLunarWorldActor> It(
-                            WeakThis->GetWorld()); It; ++It)
-                        {
-                            It->SetActiveWindowCenterMeters(RequestedCenter);
-                        }
+                        // Keep the old surface and transition opening visible
+                        // until the async mesh for the new resident particles
+                        // is ready. OnSurfaceMeshUpdated commits both together.
+                        WeakThis->PendingLunarWindowCenterMeters = RequestedCenter;
+                        WeakThis->bHasPendingLunarWindowCenter = true;
                         UE_LOG(LogTemp,Display,
                             TEXT("LUNAR_WINDOW_SHIFT index=%d old=(%.1f,%.1f)m new=(%.1f,%.1f)m residentParticles=%d cachedChunks=%d"),
                             Cache.ShiftCount,PreviousCenter.X,PreviousCenter.Y,

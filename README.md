@@ -3,7 +3,7 @@
 ## Lunar field (2026-09-20)
 
 The default source-built scene is now a lunar excavation field: a **100 x 100 m
-driveable granular field** streams through a 10 x 10 m GPU-MPM window inside a
+driveable granular field** streams through a 15 x 15 m GPU-MPM window inside a
 2,048 m lunar landscape whose
 central 1,024 m uses embedded LROC relief, with highlands, a mare-like basin,
 impact craters and scattered rocks. The
@@ -13,7 +13,8 @@ original digging objective is preserved as a buried survey marker. Double-click
 The large landscape uses measured relief from the LROC `NAC_DTM_NOBILE03`
 product plus clearly documented designed features. It is not presented as one
 literal surveyed site. Only the local window is solved on the GPU at one time;
-five-metre chunks follow the excavator and cache recently visited deformation. See
+five-metre chunks follow the excavator, preserve their full particle state for the
+session and leave a lightweight frozen trace surface outside the live window. See
 [source, architecture and limitations](Docs/LunarWorld.md).
 
 ## Android excavator first playable
@@ -87,7 +88,7 @@ granted by this upload; Unreal Engine and third-party components keep their own 
 ## Project and milestone notes
 
 Current playtest: **Dig It Up — Lunar Field**, a 100 × 100 m driveable regolith
-field with a moving 10 × 10 m active physics window inside a kilometre-scale
+field with a moving 15 × 15 m active physics window inside a kilometre-scale
 lunar context. Uncover approximately 10 × 10 cm of the
 buried survey marker; Victory appears 3 seconds later.
 Continue Digging preserves the excavation, or Exit Game ends the session.
@@ -119,12 +120,13 @@ functional transport does not establish real-machine performance.
 ## Baseline target
 
 - Windows PC, DX12 and Shader Model 6
-- One 100 m x 100 m driveable field with a following 10 m x 10 m GPU-MPM window
-- Five-metre CPU-cached chunks preserve recent excavations while GPU load stays local
+- One 100 m x 100 m driveable field with a following 15 m x 15 m GPU-MPM window
+- Three-by-three five-metre chunks remain live; visited chunks preserve their full
+  particle state and a visible frozen deformation proxy while GPU load stays local
 - No visible retaining walls in the lunar profile; the upper boundary remains open
 - Nominal 1.2 m granular depth with local highland and crater relief
-- 7.8125 cm dense full-volume physics cells by default (247,664 points initially)
-- 9 cm independent surface-reconstruction voxels
+- 10 cm dense full-volume physics cells by default (about 265,000 points initially)
+- 12 cm independent surface-reconstruction voxels
 - 30 Hz outer physics, 240 Hz internal MPM steps, 60 FPS game target and 15 Hz asynchronous bulk-surface requests
 - RTX 4070 Laptop 8 GB development target
 - Single player, one dry-sand material, no open world or networking

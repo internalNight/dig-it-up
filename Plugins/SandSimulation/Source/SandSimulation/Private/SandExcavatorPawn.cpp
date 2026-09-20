@@ -337,15 +337,26 @@ void ASandExcavatorPawn::Tick(const float DeltaSeconds)
         !FParse::Param(FCommandLine::Get(),TEXT("SandBoundaryTest")) &&
         !FParse::Param(FCommandLine::Get(),TEXT("SandBoomRaiseTest")) &&
         !FParse::Param(FCommandLine::Get(),TEXT("SandSlopeCoastTest"));
-    if (bWindowTest && WindowTestTeleportCount < 3 &&
+    if (bWindowTest && WindowTestTeleportCount < 4 &&
         ElapsedSimulationSeconds >= 2.0f + 3.0f * WindowTestTeleportCount)
     {
         FVector TestLocation = GetActorLocation();
-        TestLocation += WindowTestTeleportCount == 0
-            ? FVector(600.0f,0.0f,0.0f)
-            : (WindowTestTeleportCount == 1
-                ? FVector(0.0f,600.0f,0.0f)
-                : FVector(-600.0f,-600.0f,0.0f));
+        if (WindowTestTeleportCount == 0)
+        {
+            TestLocation += FVector(600.0f,0.0f,0.0f);
+        }
+        else if (WindowTestTeleportCount == 1)
+        {
+            TestLocation += FVector(0.0f,600.0f,0.0f);
+        }
+        else if (WindowTestTeleportCount == 2)
+        {
+            TestLocation += FVector(600.0f,0.0f,0.0f);
+        }
+        else
+        {
+            TestLocation += FVector(-1200.0f,-600.0f,0.0f);
+        }
         const USandLevelSettings* Settings = GetDefault<USandLevelSettings>();
         TestLocation.Z = 100.0f * Sand::Lunar::ActiveSurfaceHeightMeters(
             TestLocation.X / 100.0f,TestLocation.Y / 100.0f,

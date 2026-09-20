@@ -16,6 +16,11 @@ class SANDSIMULATION_API ASandLunarWorldActor final : public AActor
 public:
     ASandLunarWorldActor();
     virtual void Tick(float DeltaSeconds) override;
+    void CacheDeformationChunk(
+        FIntPoint ChunkKey,
+        TArray<float>&& HeightMeters,
+        int32 Resolution,
+        float SpacingMeters);
     void SetActiveWindowCenterMeters(FVector2f NewCenterMeters);
 
 protected:
@@ -24,6 +29,7 @@ protected:
 private:
     void BuildMacroTerrain();
     void BuildTransitionTerrain();
+    void BuildCachedDeformationTerrain();
     void BuildRocks();
 
     UPROPERTY()
@@ -34,6 +40,9 @@ private:
 
     UPROPERTY()
     TObjectPtr<UProceduralMeshComponent> TransitionTerrain;
+
+    UPROPERTY()
+    TObjectPtr<UProceduralMeshComponent> CachedDeformationTerrain;
 
     UPROPERTY()
     TObjectPtr<UProceduralMeshComponent> StaticRocks;
@@ -48,4 +57,7 @@ private:
     float RockTestLastLogSeconds = -1.0f;
     bool bRockTestImpulseApplied = false;
     FVector2f ActiveWindowCenterMeters = FVector2f::ZeroVector;
+    TMap<FIntPoint,TArray<float>> CachedDeformationHeights;
+    int32 CachedDeformationResolution = 0;
+    float CachedDeformationSpacingMeters = 0.0f;
 };

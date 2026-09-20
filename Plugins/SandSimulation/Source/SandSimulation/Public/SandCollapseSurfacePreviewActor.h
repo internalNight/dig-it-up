@@ -57,4 +57,6 @@ private:
     FVector2f SupportHeightGridMinimumMeters = FVector2f::ZeroVector;
     float SupportHeightGridCellMeters = 0.1f;
     TSharedPtr<FLunarChunkCache> LunarChunkCache;
+    FVector2f PendingLunarWindowCenterMeters = FVector2f::ZeroVector;
+    bool bHasPendingLunarWindowCenter = false;
 };

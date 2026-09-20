@@ -377,33 +377,34 @@ FSurfaceMeshData BuildSurfaceMesh(
     Mesh.Indices.Reserve(MarchingCubes.Triangles.Num() * 3);
     for (const UE::Geometry::FIndex3i& Triangle : MarchingCubes.Triangles)
     {
+        const FVector TriangleGeometricNormal = FVector::CrossProduct(
+            Mesh.Vertices[Triangle.B] - Mesh.Vertices[Triangle.A],
+            Mesh.Vertices[Triangle.C] - Mesh.Vertices[Triangle.A]).GetSafeNormal();
         if (bCullLunarBoundary)
         {
             const FVector Centroid = (
                 Mesh.Vertices[Triangle.A] + Mesh.Vertices[Triangle.B] + Mesh.Vertices[Triangle.C]) / 3.0f;
-            // The MPM field is necessarily finite, but its vertical closure is
-            // not part of the lunar surface. The transition terrain overlaps
-            // the last 0.8 m, so omit that closure (and its black silhouette)
-            // while retaining the entire playable interior.
+            // The MPM field is necessarily finite, but its closure and last
+            // metre are covered by the transition terrain. Remove the
+            // whole overlap strip so neither the side wall nor a nearly-flat
+            // bevel can reveal the square resident-window boundary.
             const float VisibleHalfExtentCentimeters = 100.0f * (
                 0.5f * FMath::Min(MaximumMeters.X - Field.MinimumMeters.X,
-                    MaximumMeters.Y - Field.MinimumMeters.Y) - 0.90f);
+                    MaximumMeters.Y - Field.MinimumMeters.Y) - 1.10f);
             const FVector2D FieldCenterCentimeters(
                 50.0f * (MaximumMeters.X + Field.MinimumMeters.X),
                 50.0f * (MaximumMeters.Y + Field.MinimumMeters.Y));
-            if (FMath::Max(
+            const float EdgeDistance = FMath::Max(
                 FMath::Abs(Centroid.X - FieldCenterCentimeters.X),
-                FMath::Abs(Centroid.Y - FieldCenterCentimeters.Y)) >
-                VisibleHalfExtentCentimeters)
+                FMath::Abs(Centroid.Y - FieldCenterCentimeters.Y));
+            if (EdgeDistance > VisibleHalfExtentCentimeters)
             {
                 continue;
             }
         }
         int32 B = Triangle.B;
         int32 C = Triangle.C;
-        const FVector GeometricNormal = FVector::CrossProduct(
-            Mesh.Vertices[B] - Mesh.Vertices[Triangle.A],
-            Mesh.Vertices[C] - Mesh.Vertices[Triangle.A]);
+        const FVector GeometricNormal = TriangleGeometricNormal;
         const FVector ShadingNormal =
             Mesh.Normals[Triangle.A] + Mesh.Normals[B] + Mesh.Normals[C];
         // UE rasterizes clockwise fronts in its left-handed coordinate system,
@@ -542,7 +543,7 @@ bool ASandSurfacePreviewActor::GenerateSurfaceFromParticlePositions(
     }
     bSurfaceBuildInFlight = true;
     const uint32 ThisGeneration = ++BuildGeneration;
-    const float VoxelSize = FMath::Clamp(VoxelSizeMeters, 0.0125f, 0.1f);
+    const float VoxelSize = FMath::Clamp(VoxelSizeMeters, 0.0125f, 0.15f);
     FDensityFieldDescription Field;
     Field.MinimumMeters = MinimumMeters;
     Field.VoxelSizeMeters = VoxelSize;

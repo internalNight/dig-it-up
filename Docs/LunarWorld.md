@@ -6,19 +6,27 @@ separating the scene into two computational scales.
 
 ## What is physical
 
-- The driveable field is **100 m x 100 m**. A following **10 m x 10 m** window is
+- The driveable field is **100 m x 100 m**. A following **15 m x 15 m** window is
   the resident three-dimensional GPU MPM volume. Its nominal depth is 1.2 m,
   with mare-to-highland relief and impact craters. Material points remain
   movable through the whole resident depth.
-- The window snaps in 5 m increments. On a shift, overlapping chunks retain
-  their current particles, departing chunks are copied to a CPU cache, and new
-  chunks are seeded from the same continuous terrain function. Returning to a
-  cached chunk restores its excavated/deposited state rather than resetting it.
-- The cache is deliberately bounded to the 64 most recently departed 5 m
-  chunks (up to 1,600 square metres before overlap). This keeps worst-case CPU
-  memory bounded; revisiting an evicted old chunk regenerates its initial state.
-- The default 7.8125 cm spacing aligns exactly with 64 cells per 5 m chunk and
-  uses 247,664 material points at the landing site. Terrain height changes the
+- The live window contains a 3 x 3 set of five-metre chunks and snaps in 5 m
+  increments, so consecutive windows overlap by 10 m. On a shift, overlapping
+  chunks retain their current particles, departing chunks are copied to a CPU
+  cache, and new chunks are seeded from the same continuous terrain function.
+  Returning to a cached chunk restores its excavated/deposited state rather than
+  resetting it.
+- The cache can hold 512 five-metre chunks, more than the complete 100 m field
+  plus its half-window edge buffer. Consequently, an in-bounds traversal cannot
+  evict an earlier excavation during the same session. CPU memory is allocated
+  only for visited chunks; a fully visited field can approach roughly 1 GB of
+  raw particle-state storage.
+- Every departed chunk also produces a 33 x 33 visual heightfield. Historical
+  tracks, pits and deposited piles therefore remain visible outside the active
+  physics window. This frozen proxy does not continue simulating; when the live
+  window returns, it is hidden and the exact cached particles resume.
+- The default 10 cm spacing aligns exactly with 50 cells per 5 m chunk and uses
+  about 265,000 material points at the landing site. Terrain height changes the
   resident count slightly. Eight internal
   steps per 30 Hz gameplay step and a 15 Hz asynchronous surface request keep
   deformation responsive on the RTX 4070 Laptop target. `-SandQuality=Fine`
@@ -27,6 +35,10 @@ separating the scene into two computational scales.
   the persistent particles inside the resident window. Streaming never deletes
   or teleports particles to imitate a bucket action; first-time chunks are
   initialized terrain, while visited chunks use their cached physical state.
+- Window movement uses a two-phase visual handoff. The previous live surface and
+  transition terrain remain in place until the replacement marching-cubes mesh
+  has uploaded; only then does the terrain opening and historical trace proxy
+  move. This removes the single-frame exposure of the buried red objective floor.
 - Ten irregular convex rocks in the playable patch are independent **Chaos
   rigid bodies** with mass, rotation and collision. The vehicle can push them;
   a particle-height bearing spring lets them settle partly below the current
@@ -73,17 +85,19 @@ deliberately avoids Earth atmosphere and height fog.
 
 ## Measured runtime check
 
-The current 1,280 x 720 streaming acceptance run started with 247,664 particles,
-then shifted through resident counts of 255,801 and 258,879 as terrain height
-changed. It returned to the landing-site cache with 247,664 particles, retained
-4/4 track supports, rendered 59 FPS at capture, maintained 30/30 Hz sand time,
-and reported warmed sampled solver/readback times of 14.7--23.1 ms. The captured
-surface build was 39.2 ms. These are observations from the development machine,
-not a general hardware guarantee.
+The current 1,280 x 720 streaming acceptance run started with 265,483 particles,
+then shifted through resident counts of 274,742, 277,488 and 285,241 as terrain
+height changed. It returned to the landing-site cache with 265,483 particles,
+retained 4/4 track supports, rendered 51 FPS at capture, maintained 30/30 Hz sand
+time, and reported warmed sampled solver/readback times of 15.7--22.2 ms (with
+one 38.7 ms shift sample). The captured warmed surface build was 53.9 ms. Outside
+the resident window the run retained nine visible historical chunk proxies with
+18,432 triangles. These are observations from the development machine, not a
+general hardware guarantee.
 
 The 100-fold increase in interactive plan area therefore does not allocate a
-100-fold GPU volume. GPU particle/grid cost follows the 10 m resident window;
-CPU memory grows only with recently visited cached chunks up to the stated cap.
+100-fold GPU volume. GPU particle/grid cost follows the 15 m resident window;
+CPU history grows with visited chunks up to the whole-field cache cap.
 
 The material parameters and gravity are still the project's gameplay baseline:
 friction angle 40 degrees, equivalent cohesion 250 Pa, damping 0.65 /s and Earth

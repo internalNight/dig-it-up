@@ -17,8 +17,8 @@ public:
     float SandDepthMeters = 1.2f;
 
     /** Width of the fully movable square MPM terrain at the centre of the lunar world. */
-    UPROPERTY(Config, EditAnywhere, Category="Level", meta=(ClampMin="5.0", ClampMax="14.0", Units="m"))
-    float ActiveWidthMeters = 10.0f;
+    UPROPERTY(Config, EditAnywhere, Category="Level", meta=(ClampMin="5.0", ClampMax="25.0", Units="m"))
+    float ActiveWidthMeters = 15.0f;
 
     /** Total driveable lunar field streamed through the local MPM window. */
     UPROPERTY(Config, EditAnywhere, Category="Lunar World", meta=(ClampMin="20.0", ClampMax="200.0", Units="m"))

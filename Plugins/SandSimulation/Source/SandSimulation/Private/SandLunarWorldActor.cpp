@@ -78,6 +78,59 @@ void AppendQuad(
     Mesh.Indices.Append({First, First + 2, First + 1, First, First + 3, First + 2});
 }
 
+void AppendHeightfieldChunk(
+    FMeshSectionData& Mesh,
+    const FIntPoint ChunkKey,
+    const TArray<float>& Heights,
+    const int32 Resolution,
+    const float SpacingMeters,
+    const float ChunkOriginMeters)
+{
+    if (Resolution < 2 || Heights.Num() != Resolution * Resolution)
+    {
+        return;
+    }
+    const float MinimumX = ChunkOriginMeters + ChunkKey.X *
+        SpacingMeters * (Resolution - 1);
+    const float MinimumY = ChunkOriginMeters + ChunkKey.Y *
+        SpacingMeters * (Resolution - 1);
+    const auto Height = [&Heights,Resolution](const int32 X,const int32 Y)
+    {
+        return Heights[FMath::Clamp(X,0,Resolution - 1) +
+            FMath::Clamp(Y,0,Resolution - 1) * Resolution];
+    };
+    const auto Normal = [&Height,SpacingMeters](const int32 X,const int32 Y)
+    {
+        const float DX = (Height(X + 1,Y) - Height(X - 1,Y)) /
+            (2.0f * SpacingMeters);
+        const float DY = (Height(X,Y + 1) - Height(X,Y - 1)) /
+            (2.0f * SpacingMeters);
+        return FVector(-DX,-DY,1.0f).GetSafeNormal();
+    };
+    const FLinearColor RegolithColor(0.23f,0.24f,0.26f,1.0f);
+    for (int32 Y = 0; Y < Resolution - 1; ++Y)
+    {
+        for (int32 X = 0; X < Resolution - 1; ++X)
+        {
+            const int32 First = Mesh.Vertices.Num();
+            const FIntPoint Corners[4] = {{X,Y},{X + 1,Y},{X + 1,Y + 1},{X,Y + 1}};
+            for (const FIntPoint Corner : Corners)
+            {
+                const float WorldX = MinimumX + Corner.X * SpacingMeters;
+                const float WorldY = MinimumY + Corner.Y * SpacingMeters;
+                const float WorldZ = Height(Corner.X,Corner.Y);
+                Mesh.Vertices.Add(FVector(WorldX,WorldY,WorldZ) * 100.0f);
+                Mesh.Normals.Add(Normal(Corner.X,Corner.Y));
+                Mesh.UVs.Add(FVector2D(WorldX,WorldY) * 0.018f);
+                const float Tone = 0.94f + 0.06f * FMath::PerlinNoise2D(
+                    FVector2D(WorldX + 11.7f,WorldY - 3.2f) * 1.15f);
+                Mesh.Colors.Add(RegolithColor * Tone);
+            }
+            Mesh.Indices.Append({First,First + 2,First + 1,First,First + 3,First + 2});
+        }
+    }
+}
+
 void UploadSection(UProceduralMeshComponent* Component, const int32 Section, FMeshSectionData&& Mesh, const bool Collision)
 {
     Component->CreateMeshSection_LinearColor(
@@ -191,12 +244,18 @@ ASandLunarWorldActor::ASandLunarWorldActor()
     TransitionTerrain->SetRelativeLocation(FVector(0.0f,0.0f,-1.0f));
     TransitionTerrain->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
     TransitionTerrain->SetCastShadow(false);
+    CachedDeformationTerrain = CreateDefaultSubobject<UProceduralMeshComponent>(
+        TEXT("CachedDeformationTerrain"));
+    CachedDeformationTerrain->SetupAttachment(SceneRoot);
+    CachedDeformationTerrain->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+    CachedDeformationTerrain->SetCastShadow(true);
     static ConstructorHelpers::FObjectFinder<UMaterialInterface> VertexColorMaterial(
         TEXT("/Engine/EngineDebugMaterials/VertexColorMaterial.VertexColorMaterial"));
     if (VertexColorMaterial.Succeeded())
     {
         MacroTerrain->SetMaterial(0,VertexColorMaterial.Object);
         TransitionTerrain->SetMaterial(0,VertexColorMaterial.Object);
+        CachedDeformationTerrain->SetMaterial(0,VertexColorMaterial.Object);
     }
 
     StaticRocks = CreateDefaultSubobject<UProceduralMeshComponent>(TEXT("StaticLunarRocks"));
@@ -214,12 +273,29 @@ void ASandLunarWorldActor::BeginPlay()
     Super::BeginPlay();
     BuildMacroTerrain();
     BuildTransitionTerrain();
+    BuildCachedDeformationTerrain();
     BuildRocks();
     for (TActorIterator<ASandCollapseSurfacePreviewActor> It(GetWorld()); It; ++It)
     {
         SandSurface = *It;
         break;
     }
+}
+
+void ASandLunarWorldActor::CacheDeformationChunk(
+    const FIntPoint ChunkKey,
+    TArray<float>&& HeightMeters,
+    const int32 Resolution,
+    const float SpacingMeters)
+{
+    if (Resolution < 2 || HeightMeters.Num() != Resolution * Resolution ||
+        SpacingMeters <= 0.0f)
+    {
+        return;
+    }
+    CachedDeformationResolution = Resolution;
+    CachedDeformationSpacingMeters = SpacingMeters;
+    CachedDeformationHeights.Add(ChunkKey,MoveTemp(HeightMeters));
 }
 
 void ASandLunarWorldActor::SetActiveWindowCenterMeters(const FVector2f NewCenterMeters)
@@ -230,6 +306,7 @@ void ASandLunarWorldActor::SetActiveWindowCenterMeters(const FVector2f NewCenter
     }
     ActiveWindowCenterMeters = NewCenterMeters;
     BuildTransitionTerrain();
+    BuildCachedDeformationTerrain();
 }
 
 void ASandLunarWorldActor::BuildMacroTerrain()
@@ -270,11 +347,25 @@ void ASandLunarWorldActor::BuildTransitionTerrain()
     const float BaseDepth = Settings->SandDepthMeters;
     const float ActiveWidth = Settings->LunarPlayableWidthMeters;
     const float ResidentWidth = Settings->ActiveWidthMeters;
+    constexpr float ChunkWidth = 5.0f;
+    const float ChunkOrigin = -0.5f * ResidentWidth;
+    const int32 ResidentChunkCount = FMath::Max(1,
+        FMath::RoundToInt(ResidentWidth / ChunkWidth));
+    const FIntPoint MinimumActiveKey(
+        FMath::RoundToInt(ActiveWindowCenterMeters.X / ChunkWidth),
+        FMath::RoundToInt(ActiveWindowCenterMeters.Y / ChunkWidth));
+    const auto IsActiveKey = [MinimumActiveKey,ResidentChunkCount](const FIntPoint Key)
+    {
+        return Key.X >= MinimumActiveKey.X &&
+            Key.X < MinimumActiveKey.X + ResidentChunkCount &&
+            Key.Y >= MinimumActiveKey.Y &&
+            Key.Y < MinimumActiveKey.Y + ResidentChunkCount;
+    };
     constexpr float HalfRing = 64.0f;
     constexpr float Step = 1.0f;
     // Slight overlap hides the independent marching-cubes edge without
     // covering the playable top surface.
-    const float HoleHalf = 0.5f * ResidentWidth - 0.80f;
+    const float HoleHalf = 0.5f * ResidentWidth - 1.00f;
     FMeshSectionData Ring;
     for (float Y = -HalfRing; Y < HalfRing - 0.1f; Y += Step)
     {
@@ -287,11 +378,64 @@ void ASandLunarWorldActor::BuildTransitionTerrain()
             {
                 continue;
             }
+            const FIntPoint ChunkKey(
+                FMath::FloorToInt((Center.X - ChunkOrigin) / ChunkWidth),
+                FMath::FloorToInt((Center.Y - ChunkOrigin) / ChunkWidth));
+            const float LocalX = Center.X - (
+                ChunkOrigin + ChunkKey.X * ChunkWidth);
+            const float LocalY = Center.Y - (
+                ChunkOrigin + ChunkKey.Y * ChunkWidth);
+            const bool bFullyInsideChunk = LocalX > 0.5f * Step &&
+                LocalX < ChunkWidth - 0.5f * Step &&
+                LocalY > 0.5f * Step && LocalY < ChunkWidth - 0.5f * Step;
+            if (!IsActiveKey(ChunkKey) && bFullyInsideChunk &&
+                CachedDeformationHeights.Contains(ChunkKey))
+            {
+                continue;
+            }
             AppendQuad(Ring, X, Y, X + Step, Y + Step, Step, BaseDepth, ActiveWidth,
                 FLinearColor(0.23f,0.24f,0.26f));
         }
     }
     UploadSection(TransitionTerrain, 0, MoveTemp(Ring), true);
+}
+
+void ASandLunarWorldActor::BuildCachedDeformationTerrain()
+{
+    if (CachedDeformationResolution < 2 || CachedDeformationSpacingMeters <= 0.0f)
+    {
+        CachedDeformationTerrain->ClearMeshSection(0);
+        return;
+    }
+    const USandLevelSettings* Settings = GetDefault<USandLevelSettings>();
+    constexpr float ChunkWidth = 5.0f;
+    const float ChunkOrigin = -0.5f * Settings->ActiveWidthMeters;
+    const int32 ResidentChunkCount = FMath::Max(1,
+        FMath::RoundToInt(Settings->ActiveWidthMeters / ChunkWidth));
+    const FIntPoint MinimumActiveKey(
+        FMath::RoundToInt(ActiveWindowCenterMeters.X / ChunkWidth),
+        FMath::RoundToInt(ActiveWindowCenterMeters.Y / ChunkWidth));
+    FMeshSectionData Deformation;
+    int32 VisibleChunkCount = 0;
+    for (const TPair<FIntPoint,TArray<float>>& Pair : CachedDeformationHeights)
+    {
+        const bool bActive = Pair.Key.X >= MinimumActiveKey.X &&
+            Pair.Key.X < MinimumActiveKey.X + ResidentChunkCount &&
+            Pair.Key.Y >= MinimumActiveKey.Y &&
+            Pair.Key.Y < MinimumActiveKey.Y + ResidentChunkCount;
+        if (!bActive)
+        {
+            ++VisibleChunkCount;
+            AppendHeightfieldChunk(Deformation,Pair.Key,Pair.Value,
+                CachedDeformationResolution,CachedDeformationSpacingMeters,
+                ChunkOrigin);
+        }
+    }
+    const int32 TriangleCount = Deformation.Indices.Num() / 3;
+    UploadSection(CachedDeformationTerrain,0,MoveTemp(Deformation),false);
+    UE_LOG(LogTemp,Display,
+        TEXT("LUNAR_TRACE_PROXY storedChunks=%d visibleChunks=%d triangles=%d"),
+        CachedDeformationHeights.Num(),VisibleChunkCount,TriangleCount);
 }
 
 void ASandLunarWorldActor::BuildRocks()
