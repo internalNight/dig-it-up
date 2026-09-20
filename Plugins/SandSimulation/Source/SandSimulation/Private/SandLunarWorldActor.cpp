@@ -222,11 +222,21 @@ void ASandLunarWorldActor::BeginPlay()
     }
 }
 
+void ASandLunarWorldActor::SetActiveWindowCenterMeters(const FVector2f NewCenterMeters)
+{
+    if (ActiveWindowCenterMeters.Equals(NewCenterMeters,0.01f))
+    {
+        return;
+    }
+    ActiveWindowCenterMeters = NewCenterMeters;
+    BuildTransitionTerrain();
+}
+
 void ASandLunarWorldActor::BuildMacroTerrain()
 {
     const USandLevelSettings* Settings = GetDefault<USandLevelSettings>();
     const float BaseDepth = Settings->SandDepthMeters;
-    const float ActiveWidth = Settings->ActiveWidthMeters;
+    const float ActiveWidth = Settings->LunarPlayableWidthMeters;
     const float WorldSize = Settings->LunarLandscapeSizeMeters;
     const int32 Resolution = FMath::Clamp(Settings->LunarLandscapeResolution, 33, 257);
     const float Step = WorldSize / (Resolution - 1);
@@ -258,19 +268,22 @@ void ASandLunarWorldActor::BuildTransitionTerrain()
 {
     const USandLevelSettings* Settings = GetDefault<USandLevelSettings>();
     const float BaseDepth = Settings->SandDepthMeters;
-    const float ActiveWidth = Settings->ActiveWidthMeters;
+    const float ActiveWidth = Settings->LunarPlayableWidthMeters;
+    const float ResidentWidth = Settings->ActiveWidthMeters;
     constexpr float HalfRing = 64.0f;
     constexpr float Step = 1.0f;
     // Slight overlap hides the independent marching-cubes edge without
     // covering the playable top surface.
-    const float HoleHalf = 0.5f * ActiveWidth - 0.80f;
+    const float HoleHalf = 0.5f * ResidentWidth - 0.80f;
     FMeshSectionData Ring;
     for (float Y = -HalfRing; Y < HalfRing - 0.1f; Y += Step)
     {
         for (float X = -HalfRing; X < HalfRing - 0.1f; X += Step)
         {
             const FVector2f Center(X + 0.5f * Step, Y + 0.5f * Step);
-            if (FMath::Max(FMath::Abs(Center.X), FMath::Abs(Center.Y)) < HoleHalf)
+            if (FMath::Max(
+                FMath::Abs(Center.X - ActiveWindowCenterMeters.X),
+                FMath::Abs(Center.Y - ActiveWindowCenterMeters.Y)) < HoleHalf)
             {
                 continue;
             }
@@ -285,7 +298,8 @@ void ASandLunarWorldActor::BuildRocks()
 {
     const USandLevelSettings* Settings = GetDefault<USandLevelSettings>();
     const float BaseDepth = Settings->SandDepthMeters;
-    const float ActiveWidth = Settings->ActiveWidthMeters;
+    const float ResidentWidth = Settings->ActiveWidthMeters;
+    const float ActiveWidth = Settings->LunarPlayableWidthMeters;
     const float HalfWorld = 0.5f * Settings->LunarLandscapeSizeMeters;
     FRandomStream Random(0x4c524f43); // "LROC", deterministic across runs.
     const int32 RockCount = FMath::Clamp(Settings->LunarRockCount, 0, 320);
@@ -310,8 +324,8 @@ void ASandLunarWorldActor::BuildRocks()
         {
             do
             {
-                P = FVector2f(Random.FRandRange(-0.42f * ActiveWidth, 0.42f * ActiveWidth),
-                    Random.FRandRange(-0.42f * ActiveWidth, 0.42f * ActiveWidth));
+                P = FVector2f(Random.FRandRange(-0.42f * ResidentWidth, 0.42f * ResidentWidth),
+                    Random.FRandRange(-0.42f * ResidentWidth, 0.42f * ResidentWidth));
             }
             while (P.Size() < 1.55f || (P - FVector2f(-1.0f,0.0f)).Size() < 1.0f);
         }
@@ -322,7 +336,7 @@ void ASandLunarWorldActor::BuildRocks()
                 P = FVector2f(Random.FRandRange(-0.92f * HalfWorld, 0.92f * HalfWorld),
                     Random.FRandRange(-0.92f * HalfWorld, 0.92f * HalfWorld));
             }
-            while (FMath::Max(FMath::Abs(P.X), FMath::Abs(P.Y)) < 0.65f * ActiveWidth);
+            while (FMath::Max(FMath::Abs(P.X), FMath::Abs(P.Y)) < 0.65f * ResidentWidth);
         }
         const float Height = bLocalRock
             ? Sand::Lunar::ActiveSurfaceHeightMeters(P.X,P.Y,BaseDepth,ActiveWidth)
@@ -419,7 +433,7 @@ void ASandLunarWorldActor::Tick(const float DeltaSeconds)
             const USandLevelSettings* Settings = GetDefault<USandLevelSettings>();
             const FVector2f PositionMeters(Location.X / 100.0f,Location.Y / 100.0f);
             if (FMath::Max(FMath::Abs(PositionMeters.X),FMath::Abs(PositionMeters.Y)) >=
-                0.5f * Settings->ActiveWidthMeters)
+                0.5f * Settings->LunarPlayableWidthMeters)
             {
                 continue;
             }
@@ -428,7 +442,7 @@ void ASandLunarWorldActor::Tick(const float DeltaSeconds)
             // particle heights arrive this fallback relinquishes control.
             SurfaceHeightCentimeters = 100.0f * Sand::Lunar::ActiveSurfaceHeightMeters(
                 PositionMeters.X,PositionMeters.Y,Settings->SandDepthMeters,
-                Settings->ActiveWidthMeters);
+                Settings->LunarPlayableWidthMeters);
         }
         const float HalfHeight = DynamicRockHalfHeightsCentimeters[Index];
         const float Bottom = Location.Z - HalfHeight;

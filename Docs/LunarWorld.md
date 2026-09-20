@@ -6,16 +6,27 @@ separating the scene into two computational scales.
 
 ## What is physical
 
-- The central **10 m x 10 m** patch is a full three-dimensional GPU MPM volume.
-  Its nominal depth is 1.2 m, with local highland undulation and three small
-  impact craters. Material points remain movable through the whole depth.
-- The default 7.5 cm cell spacing uses 283,807 material points. Eight internal
+- The driveable field is **100 m x 100 m**. A following **10 m x 10 m** window is
+  the resident three-dimensional GPU MPM volume. Its nominal depth is 1.2 m,
+  with mare-to-highland relief and impact craters. Material points remain
+  movable through the whole resident depth.
+- The window snaps in 5 m increments. On a shift, overlapping chunks retain
+  their current particles, departing chunks are copied to a CPU cache, and new
+  chunks are seeded from the same continuous terrain function. Returning to a
+  cached chunk restores its excavated/deposited state rather than resetting it.
+- The cache is deliberately bounded to the 64 most recently departed 5 m
+  chunks (up to 1,600 square metres before overlap). This keeps worst-case CPU
+  memory bounded; revisiting an evicted old chunk regenerates its initial state.
+- The default 7.8125 cm spacing aligns exactly with 64 cells per 5 m chunk and
+  uses 247,664 material points at the landing site. Terrain height changes the
+  resident count slightly. Eight internal
   steps per 30 Hz gameplay step and a 15 Hz asynchronous surface request keep
   deformation responsive on the RTX 4070 Laptop target. `-SandQuality=Fine`
   remains available for experiments, but is not the performance default.
-- The excavator, bucket contact, carried material, deposition and goal detector
-  continue to use the same persistent particle set. No visible sand is deleted
-  and regenerated to fake excavation.
+- The excavator, bucket contact, carried material and deposition continue to use
+  the persistent particles inside the resident window. Streaming never deletes
+  or teleports particles to imitate a bucket action; first-time chunks are
+  initialized terrain, while visited chunks use their cached physical state.
 - Ten irregular convex rocks in the playable patch are independent **Chaos
   rigid bodies** with mass, rotation and collision. The vehicle can push them;
   a particle-height bearing spring lets them settle partly below the current
@@ -45,11 +56,12 @@ impact craters to provide the requested variety. It is therefore a **documented
 composite lunar scene**, not a claim that highland, mare and every displayed
 crater occur together at one surveyed coordinate.
 
-The macro terrain and its larger distant rocks are static visual context. Only
-the central 10 m square and ten near-field rigid rocks are interactive. A 128 m
-transition terrain overlaps the physical patch; the finite marching-cubes side
-faces are culled so the old square black rim and pool-wall appearance are not
-rendered.
+The macro terrain and its larger distant rocks are static visual context. The
+100 m field becomes interactive locally as the physics window follows the
+excavator; ten near-field rocks are independent rigid bodies. A 128 m transition
+terrain moves its opening with the resident window; finite marching-cubes side
+faces are culled relative to that moving window so the old square black rim and
+pool-wall appearance are not rendered.
 
 ## Visual direction
 
@@ -61,13 +73,17 @@ deliberately avoids Earth atmosphere and height fog.
 
 ## Measured runtime check
 
-The same 1,600 x 900 automated excavation pass was captured before and after
-this revision on the development machine. The earlier 6.25 cm build used
-493,621 particles, rendered about 23 FPS and reported 85--87 ms solver/readback
-with about 60 ms surface builds. The revised default uses 283,807 particles,
-rendered 53--54 FPS, maintained 30/30 Hz sand time and normally reported
-18--35 ms solver/readback with 38--53 ms asynchronous surface builds. These are
-development-machine measurements, not a general hardware guarantee.
+The current 1,280 x 720 streaming acceptance run started with 247,664 particles,
+then shifted through resident counts of 255,801 and 258,879 as terrain height
+changed. It returned to the landing-site cache with 247,664 particles, retained
+4/4 track supports, rendered 59 FPS at capture, maintained 30/30 Hz sand time,
+and reported warmed sampled solver/readback times of 14.7--23.1 ms. The captured
+surface build was 39.2 ms. These are observations from the development machine,
+not a general hardware guarantee.
+
+The 100-fold increase in interactive plan area therefore does not allocate a
+100-fold GPU volume. GPU particle/grid cost follows the 10 m resident window;
+CPU memory grows only with recently visited cached chunks up to the stated cap.
 
 The material parameters and gravity are still the project's gameplay baseline:
 friction angle 40 degrees, equivalent cohesion 250 Pa, damping 0.65 /s and Earth

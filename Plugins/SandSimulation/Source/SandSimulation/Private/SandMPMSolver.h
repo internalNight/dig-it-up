@@ -134,7 +134,9 @@ TArray<FParticleData> MakeInitialSandbox(
     float FrictionAngleDegrees,
     float SandDepthMeters = 2.0f,
     float WidthMeters = 5.0f,
-    bool bLunarTerrain = false);
+    bool bLunarTerrain = false,
+    FVector2f CenterMeters = FVector2f::ZeroVector,
+    float LunarTerrainWidthMeters = 0.0f);
 
 using FCollapseFramesCallback = TUniqueFunction<void(TArray<TArray<FParticleData>>&& Frames, float FrameDeltaSeconds)>;
 
@@ -225,6 +227,14 @@ TSharedRef<FRuntimeSimulationState, ESPMode::ThreadSafe> CreateRuntimeColumnSimu
 
 TSharedRef<FRuntimeSimulationState, ESPMode::ThreadSafe> CreateRuntimeSandboxSimulation(
     const FSandMaterialParameters& Material);
+
+/** Replaces the resident GPU window after its previous step/readback has completed. */
+void ResetRuntimeSandboxWindow(
+    TSharedRef<FRuntimeSimulationState, ESPMode::ThreadSafe> State,
+    TArray<FParticleData>&& Particles,
+    FVector2f CenterMeters,
+    float WidthMeters,
+    float MaximumSurfaceMeters);
 
 /** Advances persistent GPU particle state. Callback is delivered on the game thread. */
 void EnqueueRuntimeSimulationSteps(

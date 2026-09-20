@@ -4,6 +4,7 @@
 #include "SandRoadheaderPawn.h"
 #include "SandHUD.h"
 #include "SandLevelSettings.h"
+#include "SandLunarTerrain.h"
 
 #include "Camera/CameraComponent.h"
 #include "Components/BoxComponent.h"
@@ -320,7 +321,9 @@ void ASandExcavatorPawn::Tick(const float DeltaSeconds)
     APlayerController* PlayerController = Cast<APlayerController>(GetController());
     const bool bBoundaryTest = FParse::Param(FCommandLine::Get(), TEXT("SandBoundaryTest"));
     const bool bBoomRaiseTest = FParse::Param(FCommandLine::Get(), TEXT("SandBoomRaiseTest"));
+    const bool bWindowTest = FParse::Param(FCommandLine::Get(), TEXT("SandWindowTest"));
     const bool bAutopilotDemo = bBoundaryTest || bBoomRaiseTest ||
+        bWindowTest ||
         FParse::Param(FCommandLine::Get(), TEXT("SandAutopilot")) ||
         FParse::Param(FCommandLine::Get(), TEXT("SandVictoryTest"));
     const bool bSlopeCoastTest = FParse::Param(FCommandLine::Get(), TEXT("SandSlopeCoastTest"));
@@ -334,6 +337,26 @@ void ASandExcavatorPawn::Tick(const float DeltaSeconds)
         !FParse::Param(FCommandLine::Get(),TEXT("SandBoundaryTest")) &&
         !FParse::Param(FCommandLine::Get(),TEXT("SandBoomRaiseTest")) &&
         !FParse::Param(FCommandLine::Get(),TEXT("SandSlopeCoastTest"));
+    if (bWindowTest && WindowTestTeleportCount < 3 &&
+        ElapsedSimulationSeconds >= 2.0f + 3.0f * WindowTestTeleportCount)
+    {
+        FVector TestLocation = GetActorLocation();
+        TestLocation += WindowTestTeleportCount == 0
+            ? FVector(600.0f,0.0f,0.0f)
+            : (WindowTestTeleportCount == 1
+                ? FVector(0.0f,600.0f,0.0f)
+                : FVector(-600.0f,-600.0f,0.0f));
+        const USandLevelSettings* Settings = GetDefault<USandLevelSettings>();
+        TestLocation.Z = 100.0f * Sand::Lunar::ActiveSurfaceHeightMeters(
+            TestLocation.X / 100.0f,TestLocation.Y / 100.0f,
+            Settings->SandDepthMeters,Settings->LunarPlayableWidthMeters) + 8.0f;
+        SetActorLocation(TestLocation,false,nullptr,ETeleportType::TeleportPhysics);
+        ChassisBody->SetPhysicsLinearVelocity(FVector::ZeroVector);
+        ChassisBody->SetPhysicsAngularVelocityInRadians(FVector::ZeroVector);
+        ++WindowTestTeleportCount;
+        UE_LOG(LogTemp,Display,TEXT("LUNAR_WINDOW_TEST teleport=%d location=(%.1f,%.1f,%.1f)cm"),
+            WindowTestTeleportCount,TestLocation.X,TestLocation.Y,TestLocation.Z);
+    }
     if (PlayerController && bLunarWorld && PlayerController->WasInputKeyJustPressed(EKeys::C))
     {
         bLunarOverview = !bLunarOverview;
@@ -350,7 +373,11 @@ void ASandExcavatorPawn::Tick(const float DeltaSeconds)
     float StickInput = 0.0f;
     float BucketInput = 0.0f;
     bool bBrake = false;
-    if (bBoundaryTest)
+    if (bWindowTest)
+    {
+        bBrake = true;
+    }
+    else if (bBoundaryTest)
     {
         // Headless acceptance mode drives into the nearest retaining wall.
         Throttle = -1.0f;

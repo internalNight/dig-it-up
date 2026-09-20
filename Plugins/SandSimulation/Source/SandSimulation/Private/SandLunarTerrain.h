@@ -54,6 +54,17 @@ inline float ActiveSurfaceHeightMeters(
     Height += CraterOffsetMeters(FVector2f(X, Y), FVector2f(-2.0f, 1.45f), 1.15f, 0.22f, 0.075f);
     Height += CraterOffsetMeters(FVector2f(X, Y), FVector2f(1.65f, -1.55f), 0.72f, 0.13f, 0.045f);
     Height += CraterOffsetMeters(FVector2f(X, Y), FVector2f(2.65f, 2.20f), 0.42f, 0.07f, 0.025f);
+    if (WidthMeters > 20.0f)
+    {
+        // Playable-scale landmarks remain shallow enough to drive across but
+        // make the streamed field read as mare, highland and impact terrain.
+        Height += CraterOffsetMeters(FVector2f(X,Y),FVector2f(-21.0f,15.0f),
+            6.5f,0.26f,0.10f);
+        Height += CraterOffsetMeters(FVector2f(X,Y),FVector2f(19.0f,-17.0f),
+            8.5f,0.29f,0.12f);
+        Height += CraterOffsetMeters(FVector2f(X,Y),FVector2f(31.0f,24.0f),
+            3.4f,0.18f,0.07f);
+    }
     return FMath::Clamp(Height, FMath::Max(0.45f, BaseDepthMeters - 0.30f), BaseDepthMeters + 0.32f);
 }
 

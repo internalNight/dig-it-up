@@ -9,6 +9,7 @@ namespace Sand::MPM
 struct FRuntimeSimulationState;
 }
 class ASandExcavatorPawn;
+struct FLunarChunkCache;
 
 /** Plays the validated GPU MPM column collapse through the continuous volumetric surface renderer. */
 UCLASS()
@@ -18,6 +19,7 @@ class SANDSIMULATION_API ASandCollapseSurfacePreviewActor final : public ASandSu
 
 public:
     ASandCollapseSurfacePreviewActor();
+    virtual ~ASandCollapseSurfacePreviewActor() override;
 
     uint64 GetCompletedSimulationFrames() const { return CompletedSimulationFrames; }
     float GetLastGpuStepMilliseconds() const { return LastGpuStepMilliseconds; }
@@ -54,4 +56,5 @@ private:
     FIntPoint SupportHeightGridSize = FIntPoint::ZeroValue;
     FVector2f SupportHeightGridMinimumMeters = FVector2f::ZeroVector;
     float SupportHeightGridCellMeters = 0.1f;
+    TSharedPtr<FLunarChunkCache> LunarChunkCache;
 };

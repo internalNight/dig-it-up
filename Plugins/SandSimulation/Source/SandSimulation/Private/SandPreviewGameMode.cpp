@@ -75,8 +75,9 @@ void ASandPreviewGameMode::BeginPlay()
     if (bLunarWorld)
     {
         World->SpawnActor<ASandLunarWorldActor>(FVector::ZeroVector, FRotator::ZeroRotator);
-        UE_LOG(LogTemp, Display, TEXT("LUNAR_WORLD activeMPM=%.1fm macroTerrain=%.0fm source=NAC_DTM_NOBILE03 gravity=Earth-gameplay"),
-            ActiveWidthMeters, LevelSettings->LunarLandscapeSizeMeters);
+        UE_LOG(LogTemp, Display, TEXT("LUNAR_WORLD playable=%.1fm activeMPM=%.1fm macroTerrain=%.0fm source=NAC_DTM_NOBILE03 gravity=Earth-gameplay"),
+            LevelSettings->LunarPlayableWidthMeters,ActiveWidthMeters,
+            LevelSettings->LunarLandscapeSizeMeters);
     }
 
     UStaticMesh* CubeMesh = LoadObject<UStaticMesh>(nullptr, TEXT("/Engine/BasicShapes/Cube.Cube"));
@@ -118,7 +119,11 @@ void ASandPreviewGameMode::BeginPlay()
             FRotator::ZeroRotator);
         Floor->GetStaticMeshComponent()->SetStaticMesh(CubeMesh);
         Floor->GetStaticMeshComponent()->SetMobility(EComponentMobility::Movable);
-        Floor->GetStaticMeshComponent()->SetWorldScale3D(FVector(ActiveWidthMeters + 0.4f, ActiveWidthMeters + 0.4f, 0.08));
+        // The buried survey marker remains a local objective at the original
+        // landing site; the streamed MPM boundary supplies the base elsewhere.
+        const float FloorWidthMeters = ActiveWidthMeters;
+        Floor->GetStaticMeshComponent()->SetWorldScale3D(FVector(
+            FloorWidthMeters + 0.4f,FloorWidthMeters + 0.4f,0.08f));
         Floor->GetStaticMeshComponent()->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
         Floor->GetStaticMeshComponent()->SetCollisionProfileName(TEXT("BlockAll"));
         if (FloorMaterial != nullptr)
@@ -244,6 +249,7 @@ void ASandPreviewGameMode::BeginPlay()
         if(!bTouchExcavator && bRoad) SelectVehicle(true);
         else if(!bTouchExcavator && (FParse::Param(FCommandLine::Get(),TEXT("SandExcavator")) ||
             FParse::Param(FCommandLine::Get(),TEXT("SandAutopilot")) ||
+            FParse::Param(FCommandLine::Get(),TEXT("SandWindowTest")) ||
             FParse::Param(FCommandLine::Get(),TEXT("SandVictoryTest")) ||
             FParse::Param(FCommandLine::Get(),TEXT("SandBoundaryTest")) ||
             FParse::Param(FCommandLine::Get(),TEXT("SandBoomRaiseTest")) ||
@@ -266,7 +272,8 @@ void ASandPreviewGameMode::SelectVehicle(bool bRoadheader)
         !FParse::Param(FCommandLine::Get(),TEXT("SandSlopeCoastTest"));
     const float SpawnX = -1.0f;
     const float SpawnHeight = Lunar
-        ? Sand::Lunar::ActiveSurfaceHeightMeters(SpawnX,0.0f,Settings->SandDepthMeters,Settings->ActiveWidthMeters)
+        ? Sand::Lunar::ActiveSurfaceHeightMeters(SpawnX,0.0f,
+            Settings->SandDepthMeters,Settings->LunarPlayableWidthMeters)
         : 1.5f;
     FVector Position=Bench?FVector(0,0,36):Fixture?FVector(-210,-160,20.5):FVector(SpawnX*100,0,SpawnHeight*100+8);
     FActorSpawnParameters Params;
@@ -305,6 +312,21 @@ void ASandPreviewGameMode::CheckExposedFloor(const TArray<FVector>& Vertices, co
         !FParse::Param(FCommandLine::Get(),TEXT("SandSlopeCoastTest"));
     const float ActiveWidthCm = Lunar
         ? Settings->ActiveWidthMeters * 100.0f : 500.0f;
+    if (Lunar)
+    {
+        FBox MeshBounds(ForceInit);
+        for (const FVector& Vertex : Vertices)
+        {
+            MeshBounds += Vertex;
+        }
+        const FVector2D MeshCenter(MeshBounds.GetCenter());
+        if (MeshCenter.GetAbsMax() > 0.15f * ActiveWidthCm)
+        {
+            // A streamed window away from the landing site has no survey
+            // marker. Its absent off-window cells must not count as a hole.
+            return;
+        }
+    }
     if (Sand::Goal::FindOpening(Vertices,Indices,Settings->ExposedSideCentimeters,Center,&InitialFloorCoverage,ActiveWidthCm))
     {
         FirstExposureTime = GetWorld()->GetTimeSeconds();

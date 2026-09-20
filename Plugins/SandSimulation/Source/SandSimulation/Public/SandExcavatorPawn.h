@@ -140,6 +140,7 @@ protected:
     FVector SmoothedSandSurfaceNormal = FVector::UpVector;
     bool bUseParticleBearingSupport = false;
     bool bHasSandSupportSamples = false;
+    int32 WindowTestTeleportCount = 0;
     int32 GroundedSupportCount = 4;
     float CurrentTerrainGradientMagnitude = 0.0f;
     FVector AppliedContactForce=FVector::ZeroVector;

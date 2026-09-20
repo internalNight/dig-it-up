@@ -388,7 +388,12 @@ FSurfaceMeshData BuildSurfaceMesh(
             const float VisibleHalfExtentCentimeters = 100.0f * (
                 0.5f * FMath::Min(MaximumMeters.X - Field.MinimumMeters.X,
                     MaximumMeters.Y - Field.MinimumMeters.Y) - 0.90f);
-            if (FMath::Max(FMath::Abs(Centroid.X), FMath::Abs(Centroid.Y)) >
+            const FVector2D FieldCenterCentimeters(
+                50.0f * (MaximumMeters.X + Field.MinimumMeters.X),
+                50.0f * (MaximumMeters.Y + Field.MinimumMeters.Y));
+            if (FMath::Max(
+                FMath::Abs(Centroid.X - FieldCenterCentimeters.X),
+                FMath::Abs(Centroid.Y - FieldCenterCentimeters.Y)) >
                 VisibleHalfExtentCentimeters)
             {
                 continue;

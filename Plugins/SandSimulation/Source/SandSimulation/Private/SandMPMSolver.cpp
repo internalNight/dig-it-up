@@ -81,13 +81,17 @@ TArray<FParticleData> MakeInitialSandbox(
     const float FrictionAngleDegrees,
     const float SandDepthMeters,
     const float WidthMeters,
-    const bool bLunarTerrain)
+    const bool bLunarTerrain,
+    const FVector2f CenterMeters,
+    const float LunarTerrainWidthMeters)
 {
     const int32 CellsX = FMath::RoundToInt(WidthMeters / CellSize);
     const int32 CellsY = FMath::RoundToInt(WidthMeters / CellSize);
     const float MaximumSurfaceMeters = bLunarTerrain ? SandDepthMeters + 0.32f : SandDepthMeters;
     const int32 CellsZ = FMath::CeilToInt(MaximumSurfaceMeters / CellSize);
-    const FVector3f Minimum(-0.5f * WidthMeters, -0.5f * WidthMeters, 0.0f);
+    const FVector3f Minimum(
+        CenterMeters.X - 0.5f * WidthMeters,
+        CenterMeters.Y - 0.5f * WidthMeters,0.0f);
     const float ParticleVolume = FMath::Pow(CellSize, 3.0f);
     const float ParticleMass = Density * ParticleVolume;
     const float K0 = 1.0f - FMath::Sin(FMath::DegreesToRadians(FrictionAngleDegrees));
@@ -103,7 +107,9 @@ TArray<FParticleData> MakeInitialSandbox(
                 const FVector3f Position = Minimum +
                     (FVector3f(X, Y, Z) + FVector3f(0.5f)) * CellSize;
                 const float SurfaceMeters = bLunarTerrain
-                    ? Sand::Lunar::ActiveSurfaceHeightMeters(Position.X, Position.Y, SandDepthMeters, WidthMeters)
+                    ? Sand::Lunar::ActiveSurfaceHeightMeters(
+                        Position.X,Position.Y,SandDepthMeters,
+                        LunarTerrainWidthMeters > 0.0f ? LunarTerrainWidthMeters : WidthMeters)
                     : SandDepthMeters;
                 if (Position.Z >= SurfaceMeters)
                 {
@@ -341,10 +347,10 @@ TSharedRef<FRuntimeSimulationState, ESPMode::ThreadSafe> CreateRuntimeSandboxSim
         !FParse::Param(FCommandLine::Get(), TEXT("SandLegacyBox")) && !bBench && !bLegacyAcceptance;
     if (bLunarWorld && Quality.IsEmpty())
     {
-        // Keep the ten-metre interactive patch responsive. A 7.5 cm grid has
-        // about 42% fewer particles than the previous 6.25 cm default while
-        // retaining centimetre-scale bucket/track interaction.
-        State->CellSize = 0.075f;
+        // 128 cells span the ten-metre resident window exactly. The matching
+        // five-metre chunks can therefore be streamed without overlaps or
+        // gaps, while retaining centimetre-scale bucket/track interaction.
+        State->CellSize = 0.078125f;
     }
     if (bBench && Quality.IsEmpty()) State->CellSize = 0.025f;
     State->InternalDeltaSeconds = 1.0f / (State->CellSize <= 0.025f ? 1200.0f : State->CellSize <= 0.03125f ? 900.0f : State->CellSize <= 0.05f ? 600.0f : 300.0f);
@@ -380,8 +386,9 @@ TSharedRef<FRuntimeSimulationState, ESPMode::ThreadSafe> CreateRuntimeSandboxSim
         FMath::CeilToInt((MaximumSurface+1.0f)/State->CellSize)+3);
     if(!bBench) State->InitialParticles = MakeInitialSandbox(
         State->CellSize,
-        Material.BulkDensityKgPerM3,
-        Material.InternalFrictionAngleDegrees, Depth, Width, bLunarWorld);
+        Material.BulkDensityKgPerM3,Material.InternalFrictionAngleDegrees,
+        Depth,Width,bLunarWorld,FVector2f::ZeroVector,
+        bLunarWorld ? LevelSettings->LunarPlayableWidthMeters : Width);
     if (bBench)
     {
         State->PhysicalMinimum = FVector3f(-1.2f,-0.6f,0);
@@ -431,6 +438,30 @@ TSharedRef<FRuntimeSimulationState, ESPMode::ThreadSafe> CreateRuntimeSandboxSim
     UE_LOG(LogTemp,Display,TEXT("MPM quality: cell %.5f m, dt %.6f s, particles %d, grid %d x %d x %d"),
         State->CellSize,State->InternalDeltaSeconds,State->InitialParticles.Num(),State->GridSize.X,State->GridSize.Y,State->GridSize.Z);
     return State;
+}
+
+void ResetRuntimeSandboxWindow(
+    TSharedRef<FRuntimeSimulationState, ESPMode::ThreadSafe> State,
+    TArray<FParticleData>&& Particles,
+    const FVector2f CenterMeters,
+    const float WidthMeters,
+    const float MaximumSurfaceMeters)
+{
+    const float HalfWidth = 0.5f * WidthMeters;
+    State->InitialParticles = MoveTemp(Particles);
+    State->PhysicalMinimum = FVector3f(
+        CenterMeters.X - HalfWidth, CenterMeters.Y - HalfWidth, 0.0f);
+    State->PhysicalMaximum = FVector3f(
+        CenterMeters.X + HalfWidth, CenterMeters.Y + HalfWidth,
+        MaximumSurfaceMeters + 1.0f);
+    State->GridOrigin = State->PhysicalMinimum - FVector3f(State->CellSize);
+    State->GridSize = FIntVector(
+        FMath::CeilToInt(WidthMeters / State->CellSize) + 3,
+        FMath::CeilToInt(WidthMeters / State->CellSize) + 3,
+        FMath::CeilToInt((MaximumSurfaceMeters + 1.0f) / State->CellSize) + 3);
+    // The previous external buffer remains ref-counted until the render
+    // thread is done with it. The next step uploads this CPU window instead.
+    State->bInitialized = false;
 }
 
 FToolOrientedBoxState SampleMachineCollider(const FToolOrientedBoxState& C, float Time)

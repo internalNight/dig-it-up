@@ -4,6 +4,7 @@
 #include "SandExcavatorPawn.h"
 #include "SandRoadheaderPawn.h"
 #include "SandLevelSettings.h"
+#include "SandLunarWorldActor.h"
 #include "SandPreviewGameMode.h"
 
 #include "Components/BoxComponent.h"
@@ -11,6 +12,100 @@
 #include "Misc/CommandLine.h"
 #include "Misc/Parse.h"
 #include "ProceduralMeshComponent.h"
+
+struct FLunarChunkCache
+{
+    using FParticleData = Sand::MPM::FParticleData;
+
+    FVector2f ActiveCenterMeters = FVector2f::ZeroVector;
+    float ActiveWidthMeters = 10.0f;
+    float ChunkWidthMeters = 5.0f;
+    float PlayableWidthMeters = 100.0f;
+    float SandDepthMeters = 1.2f;
+    float DensityKgPerM3 = 1550.0f;
+    float FrictionAngleDegrees = 40.0f;
+    int32 MaximumCachedChunks = 64;
+    int32 ShiftCount = 0;
+    TMap<FIntPoint,TArray<FParticleData>> Chunks;
+    TArray<FIntPoint> LeastRecentlyUsed;
+
+    FIntPoint MinimumResidentChunk(const FVector2f Center) const
+    {
+        const float Half = 0.5f * ActiveWidthMeters;
+        return FIntPoint(
+            FMath::RoundToInt((Center.X - Half) / ChunkWidthMeters),
+            FMath::RoundToInt((Center.Y - Half) / ChunkWidthMeters));
+    }
+
+    void Touch(const FIntPoint Key)
+    {
+        LeastRecentlyUsed.RemoveSingle(Key);
+        LeastRecentlyUsed.Add(Key);
+    }
+
+    void StoreResidentWindow(const TArray<FParticleData>& Particles)
+    {
+        const FIntPoint MinimumKey = MinimumResidentChunk(ActiveCenterMeters);
+        for (int32 Y = 0; Y < 2; ++Y)
+        {
+            for (int32 X = 0; X < 2; ++X)
+            {
+                const FIntPoint Key = MinimumKey + FIntPoint(X,Y);
+                Chunks.FindOrAdd(Key).Reset();
+                Touch(Key);
+            }
+        }
+        for (const FParticleData& Particle : Particles)
+        {
+            const FVector3f Position(Particle.PositionAndMass);
+            const FIntPoint Key(
+                FMath::Clamp(FMath::FloorToInt(Position.X / ChunkWidthMeters),
+                    MinimumKey.X, MinimumKey.X + 1),
+                FMath::Clamp(FMath::FloorToInt(Position.Y / ChunkWidthMeters),
+                    MinimumKey.Y, MinimumKey.Y + 1));
+            Chunks.FindChecked(Key).Add(Particle);
+        }
+    }
+
+    TArray<FParticleData> LoadWindow(const FVector2f NewCenter, const float CellSize)
+    {
+        TArray<FParticleData> Result;
+        const FIntPoint MinimumKey = MinimumResidentChunk(NewCenter);
+        for (int32 Y = 0; Y < 2; ++Y)
+        {
+            for (int32 X = 0; X < 2; ++X)
+            {
+                const FIntPoint Key = MinimumKey + FIntPoint(X,Y);
+                if (TArray<FParticleData>* Saved = Chunks.Find(Key))
+                {
+                    TArray<FParticleData> Restored = MoveTemp(*Saved);
+                    Chunks.Remove(Key);
+                    LeastRecentlyUsed.RemoveSingle(Key);
+                    Result.Append(MoveTemp(Restored));
+                }
+                else
+                {
+                    const FVector2f ChunkCenter(
+                        (Key.X + 0.5f) * ChunkWidthMeters,
+                        (Key.Y + 0.5f) * ChunkWidthMeters);
+                    Result.Append(Sand::MPM::MakeInitialSandbox(
+                        CellSize,DensityKgPerM3,FrictionAngleDegrees,
+                        SandDepthMeters,ChunkWidthMeters,true,ChunkCenter,
+                        PlayableWidthMeters));
+                }
+            }
+        }
+        ActiveCenterMeters = NewCenter;
+        ++ShiftCount;
+        while (Chunks.Num() > MaximumCachedChunks && !LeastRecentlyUsed.IsEmpty())
+        {
+            const FIntPoint Oldest = LeastRecentlyUsed[0];
+            LeastRecentlyUsed.RemoveAt(0,EAllowShrinking::No);
+            Chunks.Remove(Oldest);
+        }
+        return Result;
+    }
+};
 
 ASandCollapseSurfacePreviewActor::ASandCollapseSurfacePreviewActor()
 {
@@ -24,6 +119,8 @@ ASandCollapseSurfacePreviewActor::ASandCollapseSurfacePreviewActor()
     RuntimeMaterial.CohesionPa = 250.0f;
     RuntimeMaterial.VelocityDampingPerSecond = 0.65f;
 }
+
+ASandCollapseSurfacePreviewActor::~ASandCollapseSurfacePreviewActor() = default;
 
 void ASandCollapseSurfacePreviewActor::BeginPlay()
 {
@@ -59,6 +156,24 @@ void ASandCollapseSurfacePreviewActor::BeginPlay()
     UE_LOG(LogTemp,Display,TEXT("SOIL_CONFIG phiDeg=%.3f cohesionPa=%.3f toolMu=%.3f dampingPerSec=%.3f dilationActive=%d dilationDeg=%.3f"),
         Material.InternalFrictionAngleDegrees,Material.CohesionPa,Material.ToolFrictionCoefficient,Material.VelocityDampingPerSecond,Material.bObjectiveMaterial,Material.DilationAngleDegrees);
     SimulationState = Sand::MPM::CreateRuntimeSandboxSimulation(Material);
+    const USandLevelSettings* LevelSettings = GetDefault<USandLevelSettings>();
+    const float ResidentWidth =
+        SimulationState->PhysicalMaximum.X - SimulationState->PhysicalMinimum.X;
+    if (LevelSettings->bLunarWorld && ResidentWidth > 8.0f &&
+        LevelSettings->LunarPlayableWidthMeters > ResidentWidth + 1.0f)
+    {
+        LunarChunkCache = MakeShared<FLunarChunkCache>();
+        LunarChunkCache->ActiveWidthMeters = ResidentWidth;
+        LunarChunkCache->ChunkWidthMeters = 0.5f * ResidentWidth;
+        LunarChunkCache->PlayableWidthMeters = LevelSettings->LunarPlayableWidthMeters;
+        LunarChunkCache->SandDepthMeters = LevelSettings->SandDepthMeters;
+        LunarChunkCache->DensityKgPerM3 = Material.BulkDensityKgPerM3;
+        LunarChunkCache->FrictionAngleDegrees = Material.InternalFrictionAngleDegrees;
+        UE_LOG(LogTemp,Display,
+            TEXT("LUNAR_STREAM enabled playable=%.1fm resident=%.1fm chunk=%.1fm cacheLimit=%d"),
+            LunarChunkCache->PlayableWidthMeters,LunarChunkCache->ActiveWidthMeters,
+            LunarChunkCache->ChunkWidthMeters,LunarChunkCache->MaximumCachedChunks);
+    }
     SupportHeightGridCellMeters = SimulationState->CellSize;
     SupportHeightGridMinimumMeters = FVector2f(
         SimulationState->PhysicalMinimum.X, SimulationState->PhysicalMinimum.Y);
@@ -77,7 +192,7 @@ void ASandCollapseSurfacePreviewActor::BeginPlay()
     }
     else if (SimulationState->PhysicalMaximum.X - SimulationState->PhysicalMinimum.X > 8.0f)
     {
-        // The 10 m lunar patch uses a 7.5 cm physical grid by default. Keep
+        // The 10 m lunar window uses a 7.8125 cm physical grid by default. Keep
         // the visible surface slightly coarser so its 4x plan area remains
         // practical on the project's 8 GB target GPU.
         VoxelSizeMeters = 0.09f;
@@ -470,6 +585,60 @@ void ASandCollapseSurfacePreviewActor::Tick(const float DeltaSeconds)
 
             if (!Particles.IsEmpty())
             {
+                if (WeakThis->LunarChunkCache.IsValid() && WeakExcavator.IsValid() &&
+                    WeakThis->SimulationState.IsValid())
+                {
+                    FLunarChunkCache& Cache = *WeakThis->LunarChunkCache;
+                    const FVector ExcavatorLocationMeters =
+                        WeakExcavator->GetActorLocation() / 100.0;
+                    const float MaximumCenter = 0.5f * (
+                        Cache.PlayableWidthMeters - Cache.ActiveWidthMeters);
+                    const FVector2f RequestedCenter(
+                        FMath::Clamp(Cache.ChunkWidthMeters * FMath::RoundToInt(
+                            ExcavatorLocationMeters.X / Cache.ChunkWidthMeters),
+                            -MaximumCenter,MaximumCenter),
+                        FMath::Clamp(Cache.ChunkWidthMeters * FMath::RoundToInt(
+                            ExcavatorLocationMeters.Y / Cache.ChunkWidthMeters),
+                            -MaximumCenter,MaximumCenter));
+                    if (!RequestedCenter.Equals(Cache.ActiveCenterMeters,0.01f))
+                    {
+                        const FVector2f PreviousCenter = Cache.ActiveCenterMeters;
+                        Cache.StoreResidentWindow(Particles);
+                        TArray<Sand::MPM::FParticleData> NewParticles =
+                            Cache.LoadWindow(RequestedCenter,WeakThis->SimulationState->CellSize);
+                        const int32 ResidentParticleCount = NewParticles.Num();
+                        Particles = NewParticles;
+                        Sand::MPM::ResetRuntimeSandboxWindow(
+                            WeakThis->SimulationState.ToSharedRef(),MoveTemp(NewParticles),
+                            RequestedCenter,Cache.ActiveWidthMeters,
+                            Cache.SandDepthMeters + 0.32f);
+                        WeakThis->SupportHeightGridCellMeters =
+                            WeakThis->SimulationState->CellSize;
+                        WeakThis->SupportHeightGridMinimumMeters = FVector2f(
+                            WeakThis->SimulationState->PhysicalMinimum.X,
+                            WeakThis->SimulationState->PhysicalMinimum.Y);
+                        WeakThis->SupportHeightGridSize = FIntPoint(
+                            FMath::CeilToInt(Cache.ActiveWidthMeters /
+                                WeakThis->SupportHeightGridCellMeters) + 1,
+                            FMath::CeilToInt(Cache.ActiveWidthMeters /
+                                WeakThis->SupportHeightGridCellMeters) + 1);
+                        WeakThis->SupportHeightGridCentimeters.Init(
+                            -TNumericLimits<float>::Max(),
+                            WeakThis->SupportHeightGridSize.X *
+                                WeakThis->SupportHeightGridSize.Y);
+                        WeakThis->SurfaceMesh->ClearMeshSection(0);
+                        for (TActorIterator<ASandLunarWorldActor> It(
+                            WeakThis->GetWorld()); It; ++It)
+                        {
+                            It->SetActiveWindowCenterMeters(RequestedCenter);
+                        }
+                        UE_LOG(LogTemp,Display,
+                            TEXT("LUNAR_WINDOW_SHIFT index=%d old=(%.1f,%.1f)m new=(%.1f,%.1f)m residentParticles=%d cachedChunks=%d"),
+                            Cache.ShiftCount,PreviousCenter.X,PreviousCenter.Y,
+                            RequestedCenter.X,RequestedCenter.Y,ResidentParticleCount,
+                            Cache.Chunks.Num());
+                    }
+                }
                 if (bLogFrame && WeakThis->SimulationState.IsValid())
                 {
                     MovedParticleCount = 0;

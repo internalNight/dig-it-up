@@ -16,6 +16,7 @@ class SANDSIMULATION_API ASandLunarWorldActor final : public AActor
 public:
     ASandLunarWorldActor();
     virtual void Tick(float DeltaSeconds) override;
+    void SetActiveWindowCenterMeters(FVector2f NewCenterMeters);
 
 protected:
     virtual void BeginPlay() override;
@@ -46,4 +47,5 @@ private:
     float RockTestElapsedSeconds = 0.0f;
     float RockTestLastLogSeconds = -1.0f;
     bool bRockTestImpulseApplied = false;
+    FVector2f ActiveWindowCenterMeters = FVector2f::ZeroVector;
 };
