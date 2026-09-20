@@ -25,7 +25,9 @@
 #include "SandLevelSettings.h"
 #include "SandFloorExposure.h"
 #include "SandLunarTerrain.h"
+#include "SandLunarGemActor.h"
 #include "SandLunarWorldActor.h"
+#include "HAL/PlatformTime.h"
 #include "Misc/CommandLine.h"
 #include "Misc/Parse.h"
 #include "Misc/Paths.h"
@@ -33,6 +35,64 @@
 #include "Containers/Ticker.h"
 #include "Engine/GameViewportClient.h"
 #include "Misc/AutomationTest.h"
+
+namespace
+{
+bool SampleHighestSurfaceAtXY(const TArray<FVector>& Vertices,
+    const TArray<int32>& Indices, const FVector2D& XY, float& OutHeight)
+{
+    bool bFound = false;
+    OutHeight = -TNumericLimits<float>::Max();
+    for (int32 Index = 0; Index + 2 < Indices.Num(); Index += 3)
+    {
+        if (!Vertices.IsValidIndex(Indices[Index]) ||
+            !Vertices.IsValidIndex(Indices[Index + 1]) ||
+            !Vertices.IsValidIndex(Indices[Index + 2]))
+        {
+            continue;
+        }
+        const FVector& A = Vertices[Indices[Index]];
+        const FVector& B = Vertices[Indices[Index + 1]];
+        const FVector& C = Vertices[Indices[Index + 2]];
+        if (XY.X < FMath::Min3(A.X,B.X,C.X) || XY.X > FMath::Max3(A.X,B.X,C.X) ||
+            XY.Y < FMath::Min3(A.Y,B.Y,C.Y) || XY.Y > FMath::Max3(A.Y,B.Y,C.Y))
+        {
+            continue;
+        }
+        const double Denominator = (B.Y-C.Y)*(A.X-C.X)+(C.X-B.X)*(A.Y-C.Y);
+        if (FMath::Abs(Denominator) < UE_DOUBLE_SMALL_NUMBER)
+        {
+            continue;
+        }
+        const double U = ((B.Y-C.Y)*(XY.X-C.X)+(C.X-B.X)*(XY.Y-C.Y))/Denominator;
+        const double V = ((C.Y-A.Y)*(XY.X-C.X)+(A.X-C.X)*(XY.Y-C.Y))/Denominator;
+        if (U < -1.e-6 || V < -1.e-6 || U + V > 1.000001)
+        {
+            continue;
+        }
+        OutHeight = FMath::Max(OutHeight,static_cast<float>(
+            U*A.Z+V*B.Z+(1.0-U-V)*C.Z));
+        bFound = true;
+    }
+    if (!bFound)
+    {
+        // Marching-cubes boundaries can leave a sub-voxel seam between
+        // neighbouring triangles. Treat a nearby surface vertex as coverage,
+        // while a real bucket-sized hole still has no vertex within 6 cm.
+        constexpr float MaximumFallbackDistanceSquared = 36.0f;
+        for (const FVector& Vertex : Vertices)
+        {
+            if (FVector2D::DistSquared(FVector2D(Vertex),XY) <=
+                MaximumFallbackDistanceSquared)
+            {
+                OutHeight = FMath::Max(OutHeight,static_cast<float>(Vertex.Z));
+                bFound = true;
+            }
+        }
+    }
+    return bFound;
+}
+}
 
 ASandPreviewGameMode::ASandPreviewGameMode()
 {
@@ -85,7 +145,7 @@ void ASandPreviewGameMode::BeginPlay()
     UMaterialInterface* FloorMaterial = LoadObject<UMaterialInterface>(
         nullptr,
         TEXT("/Engine/BasicShapes/BasicShapeMaterial.BasicShapeMaterial"));
-    if (CubeMesh != nullptr)
+    if (CubeMesh != nullptr && !bLunarWorld)
     {
         const auto ConfigureContainerBox = [CubeMesh, FloorMaterial](
             UWorld* TargetWorld,
@@ -120,8 +180,8 @@ void ASandPreviewGameMode::BeginPlay()
             FRotator::ZeroRotator);
         Floor->GetStaticMeshComponent()->SetStaticMesh(CubeMesh);
         Floor->GetStaticMeshComponent()->SetMobility(EComponentMobility::Movable);
-        // The buried survey marker remains a local objective at the original
-        // landing site; the streamed MPM boundary supplies the base elsewhere.
+        // The legacy box keeps its buried red-floor objective. The lunar
+        // profile does not enter this block and uses the compact specimen.
         const float FloorWidthMeters = ActiveWidthMeters;
         Floor->GetStaticMeshComponent()->SetWorldScale3D(FVector(
             FloorWidthMeters + 0.4f,FloorWidthMeters + 0.4f,0.08f));
@@ -214,6 +274,52 @@ void ASandPreviewGameMode::BeginPlay()
         }
     }
 
+    if (bLunarWorld)
+    {
+        int32 GemSeed = static_cast<int32>(FPlatformTime::Cycles());
+        FParse::Value(FCommandLine::Get(),TEXT("SandGemSeed="),GemSeed);
+        FRandomStream Random(GemSeed);
+        FVector2f GemXY = FVector2f::ZeroVector;
+        if (!FParse::Param(FCommandLine::Get(),TEXT("SandGemTest")))
+        {
+            const float MaximumCoordinate = 0.40f * LevelSettings->LunarPlayableWidthMeters;
+            for (int32 Attempt = 0; Attempt < 32; ++Attempt)
+            {
+                GemXY = FVector2f(
+                    Random.FRandRange(-MaximumCoordinate,MaximumCoordinate),
+                    Random.FRandRange(-MaximumCoordinate,MaximumCoordinate));
+                if (GemXY.Size() >= 16.0f)
+                {
+                    break;
+                }
+            }
+        }
+        FParse::Value(FCommandLine::Get(),TEXT("SandGemX="),GemXY.X);
+        FParse::Value(FCommandLine::Get(),TEXT("SandGemY="),GemXY.Y);
+        const float SurfaceMeters = Sand::Lunar::ActiveSurfaceHeightMeters(
+            GemXY.X,GemXY.Y,LevelSettings->SandDepthMeters,
+            LevelSettings->LunarPlayableWidthMeters);
+        const FVector GemLocation(
+            100.0f * GemXY.X,100.0f * GemXY.Y,
+            100.0f * (SurfaceMeters-LevelSettings->LunarGemBurialDepthMeters));
+        FActorSpawnParameters GemSpawnParameters;
+        GemSpawnParameters.SpawnCollisionHandlingOverride =
+            ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+        ASandLunarGemActor* Gem = World->SpawnActor<ASandLunarGemActor>(
+            GemLocation,FRotator(0.0f,Random.FRandRange(0.0f,360.0f),0.0f),
+            GemSpawnParameters);
+        if (Gem != nullptr)
+        {
+            Gem->Configure(LevelSettings->LunarGemDiameterMeters);
+            LunarGem = Gem;
+            UE_LOG(LogTemp,Display,
+                TEXT("LUNAR_GEM seed=%d location=(%.2f,%.2f,%.2f)m diameter=%.2fm burial=%.2fm"),
+                GemSeed,GemXY.X,GemXY.Y,GemLocation.Z/100.0f,
+                LevelSettings->LunarGemDiameterMeters,
+                LevelSettings->LunarGemBurialDepthMeters);
+        }
+    }
+
     if (!bLunarWorld)
     {
         AExponentialHeightFog* HorizonFog = World->SpawnActor<AExponentialHeightFog>(
@@ -251,6 +357,9 @@ void ASandPreviewGameMode::BeginPlay()
         else if(!bTouchExcavator && (FParse::Param(FCommandLine::Get(),TEXT("SandExcavator")) ||
             FParse::Param(FCommandLine::Get(),TEXT("SandAutopilot")) ||
             FParse::Param(FCommandLine::Get(),TEXT("SandWindowTest")) ||
+            FParse::Param(FCommandLine::Get(),TEXT("SandPrefetchTest")) ||
+            FParse::Param(FCommandLine::Get(),TEXT("SandGemTest")) ||
+            FParse::Param(FCommandLine::Get(),TEXT("SandDetectorTest")) ||
             FParse::Param(FCommandLine::Get(),TEXT("SandVictoryTest")) ||
             FParse::Param(FCommandLine::Get(),TEXT("SandBoundaryTest")) ||
             FParse::Param(FCommandLine::Get(),TEXT("SandBoomRaiseTest")) ||
@@ -315,25 +424,85 @@ void ASandPreviewGameMode::CheckExposedFloor(const TArray<FVector>& Vertices, co
         ? Settings->ActiveWidthMeters * 100.0f : 500.0f;
     if (Lunar)
     {
+        if (!LunarGem.IsValid())
+        {
+            return;
+        }
         FBox MeshBounds(ForceInit);
         for (const FVector& Vertex : Vertices)
         {
             MeshBounds += Vertex;
         }
-        const FVector2D MeshCenter(MeshBounds.GetCenter());
-        if (MeshCenter.GetAbsMax() > 0.15f * ActiveWidthCm)
+        const FVector GemLocation = LunarGem->GetActorLocation();
+        if (!MeshBounds.IsInsideXY(GemLocation))
         {
-            // A streamed window away from the landing site has no survey
-            // marker. Its absent off-window cells must not count as a hole.
             return;
         }
+        const float Radius = LunarGem->GetRadiusCentimeters();
+        const FVector2D Samples[] = {
+            FVector2D(GemLocation),
+            FVector2D(GemLocation.X + 0.65f*Radius,GemLocation.Y),
+            FVector2D(GemLocation.X - 0.65f*Radius,GemLocation.Y),
+            FVector2D(GemLocation.X,GemLocation.Y + 0.65f*Radius),
+            FVector2D(GemLocation.X,GemLocation.Y - 0.65f*Radius)};
+        int32 ExposedSampleCount = 0;
+        for (const FVector2D& Sample : Samples)
+        {
+            float SurfaceHeight = 0.0f;
+            if (!SampleHighestSurfaceAtXY(Vertices,Indices,Sample,SurfaceHeight) ||
+                SurfaceHeight <= LunarGem->GetTopWorldZ() + 1.5f)
+            {
+                ++ExposedSampleCount;
+            }
+        }
+        if (ExposedSampleCount >= 3)
+        {
+            FirstExposureTime = GetWorld()->GetTimeSeconds();
+            UE_LOG(LogTemp,Display,
+                TEXT("DIG IT UP: golden specimen exposed samples=%d/5 at (%.1f,%.1f), countdown %.1f seconds, time %.3f"),
+                ExposedSampleCount,GemLocation.X,GemLocation.Y,
+                Settings->VictoryDelaySeconds,FirstExposureTime);
+        }
+        return;
     }
     if (Sand::Goal::FindOpening(Vertices,Indices,Settings->ExposedSideCentimeters,Center,&InitialFloorCoverage,ActiveWidthCm))
     {
         FirstExposureTime = GetWorld()->GetTimeSeconds();
-        UE_LOG(LogTemp,Display,TEXT("DIG IT UP: %s exposed at (%.1f,%.1f), countdown %.1f seconds, time %.3f"),
-            Lunar ? TEXT("survey marker") : TEXT("red floor"),Center.X,Center.Y,Settings->VictoryDelaySeconds,FirstExposureTime);
+        UE_LOG(LogTemp,Display,TEXT("DIG IT UP: red floor exposed at (%.1f,%.1f), countdown %.1f seconds, time %.3f"),
+            Center.X,Center.Y,Settings->VictoryDelaySeconds,FirstExposureTime);
     }
+}
+
+void ASandPreviewGameMode::ActivateMineralDetector(const FVector& SourceLocation)
+{
+    if (!LunarGem.IsValid() || bHasWon)
+    {
+        return;
+    }
+    DetectorActiveUntil = GetWorld()->GetTimeSeconds() +
+        GetDefault<USandLevelSettings>()->LunarDetectorDurationSeconds;
+    const FVector Offset = LunarGem->GetActorLocation() - SourceLocation;
+    UE_LOG(LogTemp,Display,
+        TEXT("MINERAL_DETECTOR active=1 duration=%.1fs directionYaw=%.1f distance=%.1fm"),
+        GetDefault<USandLevelSettings>()->LunarDetectorDurationSeconds,
+        Offset.Rotation().Yaw,Offset.Size2D()/100.0f);
+}
+
+bool ASandPreviewGameMode::IsMineralDetectorActive() const
+{
+    return LunarGem.IsValid() && !bHasWon && GetWorld() != nullptr &&
+        GetWorld()->GetTimeSeconds() < DetectorActiveUntil;
+}
+
+float ASandPreviewGameMode::GetMineralDetectorRemainingSeconds() const
+{
+    return IsMineralDetectorActive()
+        ? FMath::Max(0.0f,DetectorActiveUntil-GetWorld()->GetTimeSeconds()) : 0.0f;
+}
+
+FVector ASandPreviewGameMode::GetLunarGemLocation() const
+{
+    return LunarGem.IsValid() ? LunarGem->GetActorLocation() : FVector::ZeroVector;
 }
 
 float ASandPreviewGameMode::GetVictoryCountdown() const
@@ -426,6 +595,24 @@ bool FSandFloorExposureTest::RunTest(const FString& Parameters)
     Initial.Reset();
     Sand::Goal::FindOpening(V,T,10,Center,&Initial);
     TestFalse(TEXT("Pre-existing seams do not count as excavation"),Sand::Goal::FindOpening(V,T,10,Center,&Initial));
+    return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSandGemSurfaceSampleTest,
+    "SandSimulation.Goal.GemSurfaceSample",
+    EAutomationTestFlags::EditorContext|EAutomationTestFlags::EngineFilter)
+bool FSandGemSurfaceSampleTest::RunTest(const FString& Parameters)
+{
+    const TArray<FVector> Vertices = {
+        FVector(-20,-20,15),FVector(20,-20,15),
+        FVector(20,20,15),FVector(-20,20,15)};
+    const TArray<int32> Triangles = {0,1,2,0,2,3};
+    float Height = 0.0f;
+    TestTrue(TEXT("Surface exists over buried specimen"),
+        SampleHighestSurfaceAtXY(Vertices,Triangles,FVector2D::ZeroVector,Height));
+    TestEqual(TEXT("Highest surface is sampled"),Height,15.0f);
+    TestFalse(TEXT("Excavated point has no covering surface"),
+        SampleHighestSurfaceAtXY(Vertices,Triangles,FVector2D(30,0),Height));
     return true;
 }
 #endif

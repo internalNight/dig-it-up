@@ -147,4 +147,5 @@ protected:
     float TractionBudgetN=0,DriveTargetMps=0;
     float BearingNormalN=0,FilteredBearingNormalN=0;
     bool bLunarOverview = false;
+    bool bDetectorTestActivated = false;
 };

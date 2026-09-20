@@ -6,8 +6,9 @@ The default source-built scene is now a lunar excavation field: a **100 x 100 m
 driveable granular field** streams through a 15 x 15 m GPU-MPM window inside a
 8,192 m visual lunar horizon. Its detailed inner 2,048 m landscape uses a
 central 1,024 m embedded LROC relief crop, with highlands, a mare-like basin,
-impact craters and scattered rocks. The
-original digging objective is preserved as a buried survey marker. Double-click
+impact craters and scattered rocks. The objective is now a **22 cm faceted golden
+specimen**, randomly buried 30 cm below the local surface. Press **V** to show its
+bearing for five seconds, travel across the field, then excavate it. Double-click
 `PlayLunarWorld.cmd` to run it, or use `-SandLegacyBox` for the earlier box scene.
 
 The large landscape uses measured relief from the LROC `NAC_DTM_NOBILE03`
@@ -89,8 +90,8 @@ granted by this upload; Unreal Engine and third-party components keep their own 
 
 Current playtest: **Dig It Up — Lunar Field**, a 100 × 100 m driveable regolith
 field with a moving 15 × 15 m active physics window inside an 8.192 km visual
-lunar context. Uncover approximately 10 × 10 cm of the
-buried survey marker; Victory appears 3 seconds later.
+lunar context. Use the timed mineral bearing to find and expose most of the
+buried golden specimen; Victory appears 3 seconds later.
 Continue Digging preserves the excavation, or Exit Game ends the session.
 See `Docs/EasyLevel.md` for the current level and acceptance evidence. The baseline
 and earlier milestone measurements below describe the original 2 m prototype.
@@ -143,8 +144,10 @@ Close UE Editor first on a 16 GB machine to avoid several gigabytes of avoidable
 
 The in-game HUD shows live speed, the number of supported track sampling points,
 and every control. **W/S** drive, **A/D** steer, **Space** brakes, **Q/E** controls
-the boom, **R/F** the stick and **T/G** curls/dumps the bucket. **H** hides or shows
-the help panel; **Esc** exits the packaged game.
+the boom, **R/F** the stick and **T/G** curls/dumps the bucket. In the lunar field,
+the **arrow keys** orbit the camera, **C** changes close/regional scale and **V**
+pulses the five-second mineral bearing. **H** hides or shows the help panel;
+**Esc** exits the packaged game.
 
 The workspace name contains non-ASCII characters, which the current MSVC/UE PCH path can mis-handle. Project generation and command-line builds therefore use the existing directory junction `D:\UEProjects\SandExcavator`; it points at this same workspace and does not duplicate source files.
 

@@ -38,7 +38,15 @@ separating the scene into two computational scales.
 - Window movement uses a two-phase visual handoff. The previous live surface and
   transition terrain remain in place until the replacement marching-cubes mesh
   has uploaded; only then does the terrain opening and historical trace proxy
-  move. This removes the single-frame exposure of the buried red objective floor.
+  move. The old full-window objective floor has been removed. Approaching an edge
+  now pre-generates one entering chunk per surface update, so ordinary driving
+  spreads initialization over several frames. Only the three departing chunks
+  are converted to frozen heightfields on a one-axis shift, instead of rebuilding
+  all nine resident chunks.
+- Historical deformation proxies no longer cast their own streamed chunk shadows.
+  The continuous macro terrain carries the large-scale shadow, avoiding a square
+  or delayed shadow flash while the proxy geometry changes; local rocks, machine
+  and permanent terrain still cast hard lunar shadows.
 - Ten irregular convex rocks in the playable patch are independent **Chaos
   rigid bodies** with mass, rotation and collision. The vehicle can push them;
   a particle-height bearing spring lets them settle partly below the current
@@ -87,6 +95,28 @@ terrain, eliminating the conspicuous square physics patch. Returning to the clos
 camera restores them; physics and cached deformation continue unchanged while the
 overview is active.
 
+The **left/right arrow keys** orbit around the excavator and **up/down** change
+camera elevation in both camera scales. The orbit is continuous rather than a set
+of fixed viewpoints, so the terrain, route and excavated trace can be inspected
+from any azimuth.
+
+## Lunar specimen mission
+
+Each normal launch chooses a hidden point at least 16 m from the landing area and
+inside the central 80% of the 100 m field. A 22 cm irregular faceted golden
+specimen is placed with its centre 30 cm below the undisturbed local surface; it
+is smaller than half the current bucket width. The former full-size buried survey
+floor is not spawned in the lunar profile.
+
+Press **V** to pulse the mineral detector. For five seconds an amber arrow appears
+around the excavator and continuously reports the world-space bearing of the
+specimen relative to the current camera. It gives direction, not an exact map
+coordinate or distance, and can be pulsed again after it fades. Exposing at least
+three of five samples across the specimen starts the existing three-second victory
+confirmation. A six-centimetre mesh-seam tolerance prevents ordinary marching-
+cubes gaps from being mistaken for excavation. `-SandGemSeed=N` gives a repeatable
+location for QA; normal launches use a fresh seed.
+
 ## Visual direction
 
 The lunar profile uses an unlit airless-sky material, low-angle directional
@@ -106,6 +136,12 @@ one 38.7 ms shift sample). The captured warmed surface build was 53.9 ms. Outsid
 the resident window the run retained nine visible historical chunk proxies with
 18,432 triangles. These are observations from the development machine, not a
 general hardware guarantee.
+
+After the edge-prefetch update, a paced two-boundary traversal measured 14.17 ms
+and 18.32 ms of game-thread window preparation at the two commits. The earlier
+instant-teleport stress path, which deliberately bypasses the approach distance,
+still measured 27--32 ms for first-time chunks. This optimization reduces the
+normal driving hitch; it does not claim that arbitrary teleports are hitch-free.
 
 The separate regional-view capture rendered 54 FPS at capture after startup,
 held approximately 30/30 Hz sand time and showed the black airless sky without
@@ -136,11 +172,11 @@ and excavation objective and needs a separate tuning/validation pass.
 ## Run and fallback
 
 Double-click `PlayLunarWorld.cmd` for the source-built lunar scene. The game still
-uses W/S, A/D, Space, Q/E, R/F and T/G for the excavator. The original objective
-is retained as a buried survey marker: expose about 10 cm x 10 cm and hold the
-opening for three seconds. Press **C** to switch between the close excavation
-camera and a regional overview that reveals the highlands, mare-like basin and
-larger impact craters.
+uses W/S, A/D, Space, Q/E, R/F and T/G for the excavator. Use the **arrow keys**
+to orbit, **C** to switch between close excavation and regional overview, and
+**V** to display the golden specimen bearing for five seconds. Travel toward the
+bearing, excavate the specimen, and keep it exposed through the three-second
+confirmation.
 
 Use `-SandLegacyBox` to bring back the five-metre retaining-box scene for A/B
 comparison and regression testing.

@@ -253,7 +253,10 @@ ASandLunarWorldActor::ASandLunarWorldActor()
         TEXT("CachedDeformationTerrain"));
     CachedDeformationTerrain->SetupAttachment(SceneRoot);
     CachedDeformationTerrain->SetCollisionEnabled(ECollisionEnabled::NoCollision);
-    CachedDeformationTerrain->SetCastShadow(true);
+    // This proxy is swapped chunk-by-chunk. Let the continuous macro terrain
+    // carry the large-scale shadow so a streamed proxy edge cannot flash a
+    // square, physically implausible shadow during a window commit.
+    CachedDeformationTerrain->SetCastShadow(false);
     static ConstructorHelpers::FObjectFinder<UMaterialInterface> VertexColorMaterial(
         TEXT("/Engine/EngineDebugMaterials/VertexColorMaterial.VertexColorMaterial"));
     if (VertexColorMaterial.Succeeded())

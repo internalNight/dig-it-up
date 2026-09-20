@@ -10,6 +10,7 @@
 
 #include "Components/BoxComponent.h"
 #include "EngineUtils.h"
+#include "HAL/PlatformTime.h"
 #include "Misc/CommandLine.h"
 #include "Misc/Parse.h"
 #include "ProceduralMeshComponent.h"
@@ -51,6 +52,14 @@ struct FLunarChunkCache
             FMath::RoundToInt(Center.Y / ChunkWidthMeters));
     }
 
+    bool IsResidentChunk(const FIntPoint Key, const FVector2f Center) const
+    {
+        const FIntPoint MinimumKey = MinimumResidentChunk(Center);
+        const int32 Count = ResidentChunksPerAxis();
+        return Key.X >= MinimumKey.X && Key.X < MinimumKey.X + Count &&
+            Key.Y >= MinimumKey.Y && Key.Y < MinimumKey.Y + Count;
+    }
+
     void Touch(const FIntPoint Key)
     {
         LeastRecentlyUsed.RemoveSingle(Key);
@@ -61,12 +70,15 @@ struct FLunarChunkCache
     {
         const FIntPoint MinimumKey = MinimumResidentChunk(ActiveCenterMeters);
         const int32 ChunkCount = ResidentChunksPerAxis();
+        const int32 ExpectedParticlesPerChunk =
+            FMath::CeilToInt(1.08f * Particles.Num() / FMath::Max(1,ChunkCount*ChunkCount));
         for (int32 Y = 0; Y < ChunkCount; ++Y)
         {
             for (int32 X = 0; X < ChunkCount; ++X)
             {
                 const FIntPoint Key = MinimumKey + FIntPoint(X,Y);
-                Chunks.FindOrAdd(Key).Reset();
+                TArray<FParticleData>& Chunk = Chunks.FindOrAdd(Key);
+                Chunk.Reset(ExpectedParticlesPerChunk);
                 Touch(Key);
             }
         }
@@ -122,6 +134,35 @@ struct FLunarChunkCache
             Chunks.Remove(Oldest);
         }
         return Result;
+    }
+
+    int32 PrefetchWindowEdge(const FVector2f NewCenter, const float CellSize,
+        const int32 MaximumChunksToCreate = 1)
+    {
+        const FIntPoint MinimumKey = MinimumResidentChunk(NewCenter);
+        const int32 ChunkCount = ResidentChunksPerAxis();
+        int32 Created = 0;
+        for (int32 Y = 0; Y < ChunkCount && Created < MaximumChunksToCreate; ++Y)
+        {
+            for (int32 X = 0; X < ChunkCount && Created < MaximumChunksToCreate; ++X)
+            {
+                const FIntPoint Key = MinimumKey + FIntPoint(X,Y);
+                if (IsResidentChunk(Key,ActiveCenterMeters) || Chunks.Contains(Key))
+                {
+                    continue;
+                }
+                const FVector2f ChunkCenter(
+                    ChunkOriginMeters() + (Key.X + 0.5f) * ChunkWidthMeters,
+                    ChunkOriginMeters() + (Key.Y + 0.5f) * ChunkWidthMeters);
+                Chunks.Add(Key,Sand::MPM::MakeInitialSandbox(
+                    CellSize,DensityKgPerM3,FrictionAngleDegrees,
+                    SandDepthMeters,ChunkWidthMeters,true,ChunkCenter,
+                    PlayableWidthMeters));
+                Touch(Key);
+                ++Created;
+            }
+        }
+        return Created;
     }
 
     TArray<float> BuildHeightfield(
@@ -309,6 +350,33 @@ void ASandCollapseSurfacePreviewActor::BeginPlay()
                 Particle.StressRemainder = FVector4f(0, 0, 0, 0);
             }
         }
+    }
+    // Test-only fixture for end-to-end validation of the lunar objective.
+    // It removes only the shallow plug directly above the test-position gem.
+    if (FParse::Param(FCommandLine::Get(),TEXT("SandGemTest")))
+    {
+        const USandLevelSettings* Settings = GetDefault<USandLevelSettings>();
+        const float Surface = Sand::Lunar::ActiveSurfaceHeightMeters(
+            0.0f,0.0f,Settings->SandDepthMeters,
+            Settings->LunarPlayableWidthMeters);
+        int32 Relocated = 0;
+        for (auto& Particle : SimulationState->InitialParticles)
+        {
+            FVector3f P(Particle.PositionAndMass);
+            if (P.X*P.X+P.Y*P.Y < FMath::Square(0.24f) &&
+                P.Z > Surface-0.20f)
+            {
+                P.X += 1.1f;
+                P.Z += 0.25f;
+                Particle.PositionAndMass = FVector4f(P,Particle.PositionAndMass.W);
+                Particle.StressRow0AndCompaction = FVector4f(0,0,0,0.45f);
+                Particle.StressRemainder = FVector4f(0,0,0,0);
+                ++Relocated;
+            }
+        }
+        UE_LOG(LogTemp,Display,
+            TEXT("LUNAR_GEM_TEST excavatedParticles=%d surface=%.3fm"),
+            Relocated,Surface);
     }
     if (FParse::Param(FCommandLine::Get(),TEXT("SandRoadheaderBench")))
     {
@@ -676,8 +744,43 @@ void ASandCollapseSurfacePreviewActor::Tick(const float DeltaSeconds)
                         FMath::Clamp(Cache.ChunkWidthMeters * FMath::RoundToInt(
                             ExcavatorLocationMeters.Y / Cache.ChunkWidthMeters),
                             -MaximumCenter,MaximumCenter));
+                    // Prepare one entering strip chunk per surface update while
+                    // the machine approaches an edge. Ordinary driving then
+                    // spreads seeding over several frames instead of creating
+                    // three chunks on the exact migration frame.
+                    FVector2f PrefetchCenter = Cache.ActiveCenterMeters;
+                    const FVector2f OffsetFromWindowCenter =
+                        FVector2f(ExcavatorLocationMeters.X,ExcavatorLocationMeters.Y) -
+                        Cache.ActiveCenterMeters;
+                    constexpr float PrefetchThresholdMeters = 1.25f;
+                    if (FMath::Abs(OffsetFromWindowCenter.X) > PrefetchThresholdMeters)
+                    {
+                        PrefetchCenter.X += FMath::Sign(OffsetFromWindowCenter.X) *
+                            Cache.ChunkWidthMeters;
+                    }
+                    if (FMath::Abs(OffsetFromWindowCenter.Y) > PrefetchThresholdMeters)
+                    {
+                        PrefetchCenter.Y += FMath::Sign(OffsetFromWindowCenter.Y) *
+                            Cache.ChunkWidthMeters;
+                    }
+                    PrefetchCenter.X = FMath::Clamp(
+                        PrefetchCenter.X,-MaximumCenter,MaximumCenter);
+                    PrefetchCenter.Y = FMath::Clamp(
+                        PrefetchCenter.Y,-MaximumCenter,MaximumCenter);
+                    if (!PrefetchCenter.Equals(Cache.ActiveCenterMeters,0.01f))
+                    {
+                        const int32 Prefetched = Cache.PrefetchWindowEdge(
+                            PrefetchCenter,WeakThis->SimulationState->CellSize);
+                        if (Prefetched > 0)
+                        {
+                            UE_LOG(LogTemp,Verbose,
+                                TEXT("LUNAR_WINDOW_PREFETCH target=(%.1f,%.1f)m chunks=%d"),
+                                PrefetchCenter.X,PrefetchCenter.Y,Prefetched);
+                        }
+                    }
                     if (!RequestedCenter.Equals(Cache.ActiveCenterMeters,0.01f))
                     {
+                        const double ShiftCpuStart = FPlatformTime::Seconds();
                         const FVector2f PreviousCenter = Cache.ActiveCenterMeters;
                         Cache.StoreResidentWindow(Particles);
                         constexpr int32 DeformationResolution = 33;
@@ -685,6 +788,7 @@ void ASandCollapseSurfacePreviewActor::Tick(const float DeltaSeconds)
                             (DeformationResolution - 1);
                         const FIntPoint PreviousMinimumKey =
                             Cache.MinimumResidentChunk(PreviousCenter);
+                        int32 DepartingChunkCount = 0;
                         for (TActorIterator<ASandLunarWorldActor> It(
                             WeakThis->GetWorld()); It; ++It)
                         {
@@ -693,10 +797,15 @@ void ASandCollapseSurfacePreviewActor::Tick(const float DeltaSeconds)
                                 for (int32 X = 0; X < Cache.ResidentChunksPerAxis(); ++X)
                                 {
                                     const FIntPoint Key = PreviousMinimumKey + FIntPoint(X,Y);
+                                    if (Cache.IsResidentChunk(Key,RequestedCenter))
+                                    {
+                                        continue;
+                                    }
                                     It->CacheDeformationChunk(Key,
                                         Cache.BuildHeightfield(Key,DeformationResolution,
                                             WeakThis->SimulationState->CellSize),
                                         DeformationResolution,DeformationSpacing);
+                                    ++DepartingChunkCount;
                                 }
                             }
                         }
@@ -727,11 +836,13 @@ void ASandCollapseSurfacePreviewActor::Tick(const float DeltaSeconds)
                         // is ready. OnSurfaceMeshUpdated commits both together.
                         WeakThis->PendingLunarWindowCenterMeters = RequestedCenter;
                         WeakThis->bHasPendingLunarWindowCenter = true;
+                        const double ShiftCpuMilliseconds =
+                            1000.0 * (FPlatformTime::Seconds()-ShiftCpuStart);
                         UE_LOG(LogTemp,Display,
-                            TEXT("LUNAR_WINDOW_SHIFT index=%d old=(%.1f,%.1f)m new=(%.1f,%.1f)m residentParticles=%d cachedChunks=%d"),
+                            TEXT("LUNAR_WINDOW_SHIFT index=%d old=(%.1f,%.1f)m new=(%.1f,%.1f)m residentParticles=%d cachedChunks=%d departingChunks=%d cpuMs=%.2f"),
                             Cache.ShiftCount,PreviousCenter.X,PreviousCenter.Y,
                             RequestedCenter.X,RequestedCenter.Y,ResidentParticleCount,
-                            Cache.Chunks.Num());
+                            Cache.Chunks.Num(),DepartingChunkCount,ShiftCpuMilliseconds);
                     }
                 }
                 if (bLogFrame && WeakThis->SimulationState.IsValid())

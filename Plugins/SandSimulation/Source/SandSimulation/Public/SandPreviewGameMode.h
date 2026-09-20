@@ -3,6 +3,8 @@
 #include "GameFramework/GameModeBase.h"
 #include "SandPreviewGameMode.generated.h"
 
+class ASandLunarGemActor;
+
 /** Minimal presentation world used while the surface renderer is under construction. */
 UCLASS()
 class SANDSIMULATION_API ASandPreviewGameMode final : public AGameModeBase
@@ -19,6 +21,11 @@ public:
     bool IsVictoryVisible() const { return bVictoryVisible; }
     bool HasWon() const { return bHasWon; }
     float GetVictoryCountdown() const;
+    void ActivateMineralDetector(const FVector& SourceLocation);
+    bool IsMineralDetectorActive() const;
+    float GetMineralDetectorRemainingSeconds() const;
+    bool HasLunarGem() const { return LunarGem.IsValid(); }
+    FVector GetLunarGemLocation() const;
 
 protected:
     virtual void BeginPlay() override;
@@ -32,4 +39,6 @@ private:
     bool bSelectingVehicle = true;
     bool bHasWon = false;
     bool bVictoryVisible = false;
+    float DetectorActiveUntil = -1.0f;
+    TWeakObjectPtr<ASandLunarGemActor> LunarGem;
 };

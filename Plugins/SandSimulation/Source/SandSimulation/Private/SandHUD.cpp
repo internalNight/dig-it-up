@@ -14,6 +14,7 @@
 #include "SandCollapseSurfacePreviewActor.h"
 #include "EngineUtils.h"
 #include "HAL/PlatformTime.h"
+#include "Math/RotationMatrix.h"
 #include "Misc/CommandLine.h"
 #include "Misc/Parse.h"
 
@@ -346,7 +347,7 @@ void ASandHUD::DrawHUD()
             DrawText(Text,Color,CentreX-W*0.5f,Y,Font,Scale,false);
         };
         DrawRect(FLinearColor(1,0.72f,0.12f),CentreX-100*UiScale,Canvas->SizeY*0.49f,200*UiScale,2*UiScale);
-        DrawCentred(bLunarWorld ? TEXT("Survey marker recovered!") : TEXT("You dug it up!"),Canvas->SizeY*0.52f,1.8f*UiScale,FLinearColor(1,.94f,.78f));
+        DrawCentred(bLunarWorld ? TEXT("Golden specimen recovered!") : TEXT("You dug it up!"),Canvas->SizeY*0.52f,1.8f*UiScale,FLinearColor(1,.94f,.78f));
         const float X = CentreX-260*UiScale, Y = Canvas->SizeY*0.64f;
         DrawRect(FLinearColor(0.12f,0.28f,0.23f),X,Y,310*UiScale,60*UiScale);
         DrawRect(FLinearColor(0.30f,0.12f,0.10f),X+330*UiScale,Y,190*UiScale,60*UiScale);
@@ -385,24 +386,74 @@ void ASandHUD::DrawHUD()
         FLinearColor::White, Margin + 12.0f * UiScale, Margin + 31.0f * UiScale,
         Font, 0.92f * UiScale, false);
     DrawText(FParse::Param(FCommandLine::Get(),TEXT("SandRoadheaderBench")) ? TEXT("Transport bench  |  Press T to run motors") : Mode && Mode->HasWon() ? TEXT("VICTORY COMPLETE  -  Free exploration") :
-        bLunarWorld ? TEXT("Excavate regolith. Expose the buried survey marker.") :
+        bLunarWorld ? TEXT("Travel, scan and excavate the buried golden specimen.") :
         *FString::Printf(TEXT("Dig %.1f m down. Uncover the RED floor."),1.5f),
         FLinearColor(1.0f,0.65f,0.65f),Margin+12*UiScale,Margin+54*UiScale,Font,0.95f*UiScale,false);
     if (Mode && !Mode->HasWon() && Mode->GetVictoryCountdown()>=0.0f)
     {
         DrawRect(FLinearColor(0.1f,0.02f,0.02f,0.88f),Canvas->SizeX*0.5f-185*UiScale,Canvas->SizeY-75*UiScale,370*UiScale,48*UiScale);
         const FString CountdownText = bLunarWorld
-            ? FString::Printf(TEXT("SURVEY MARKER FOUND!   %.1f s"),Mode->GetVictoryCountdown())
+            ? FString::Printf(TEXT("GOLDEN SPECIMEN FOUND!   %.1f s"),Mode->GetVictoryCountdown())
             : FString::Printf(TEXT("RED FLOOR FOUND!   %.1f s"),Mode->GetVictoryCountdown());
         DrawText(CountdownText,
             FLinearColor(1,0.85f,0.55f),Canvas->SizeX*0.5f-145*UiScale,Canvas->SizeY-60*UiScale,Font,1.15f*UiScale,false);
+    }
+
+    if (bLunarWorld && Mode && Excavator && !Machine &&
+        Mode->IsMineralDetectorActive() && Mode->HasLunarGem())
+    {
+        FVector CameraLocation;
+        FRotator CameraRotation;
+        PlayerOwner->GetPlayerViewPoint(CameraLocation,CameraRotation);
+        FVector CameraForward = CameraRotation.Vector();
+        CameraForward.Z = 0.0f;
+        CameraForward.Normalize();
+        FVector CameraRight = FRotationMatrix(CameraRotation).GetScaledAxis(EAxis::Y);
+        CameraRight.Z = 0.0f;
+        CameraRight.Normalize();
+        FVector Bearing = Mode->GetLunarGemLocation() - Excavator->GetActorLocation();
+        Bearing.Z = 0.0f;
+        Bearing.Normalize();
+        FVector2D ScreenDirection(
+            FVector::DotProduct(Bearing,CameraRight),
+            -FVector::DotProduct(Bearing,CameraForward));
+        ScreenDirection.Normalize();
+        FVector2D PawnScreen(Canvas->SizeX*0.5f,Canvas->SizeY*0.60f);
+        PlayerOwner->ProjectWorldLocationToScreen(
+            Excavator->GetActorLocation()+FVector(0,0,65),PawnScreen,true);
+        PawnScreen.X = FMath::Clamp(PawnScreen.X,150.0f*UiScale,
+            Canvas->SizeX-150.0f*UiScale);
+        PawnScreen.Y = FMath::Clamp(PawnScreen.Y,130.0f*UiScale,
+            Canvas->SizeY-130.0f*UiScale);
+        const FVector2D ArrowStart = PawnScreen + ScreenDirection * 48.0f*UiScale;
+        const FVector2D ArrowEnd = PawnScreen + ScreenDirection * 128.0f*UiScale;
+        const FVector2D ArrowSide(-ScreenDirection.Y,ScreenDirection.X);
+        const FLinearColor DetectorGlow(1.0f,0.58f,0.06f,0.22f);
+        const FLinearColor DetectorGold(1.0f,0.72f,0.12f,0.98f);
+        DrawLine(ArrowStart.X,ArrowStart.Y,ArrowEnd.X,ArrowEnd.Y,
+            DetectorGlow,9.0f*UiScale);
+        DrawLine(ArrowStart.X,ArrowStart.Y,ArrowEnd.X,ArrowEnd.Y,
+            DetectorGold,3.0f*UiScale);
+        const FVector2D HeadBase = ArrowEnd-ScreenDirection*18.0f*UiScale;
+        DrawLine(ArrowEnd.X,ArrowEnd.Y,
+            HeadBase.X+ArrowSide.X*10.0f*UiScale,
+            HeadBase.Y+ArrowSide.Y*10.0f*UiScale,DetectorGold,3.0f*UiScale);
+        DrawLine(ArrowEnd.X,ArrowEnd.Y,
+            HeadBase.X-ArrowSide.X*10.0f*UiScale,
+            HeadBase.Y-ArrowSide.Y*10.0f*UiScale,DetectorGold,3.0f*UiScale);
+        const FString DetectorText = FString::Printf(
+            TEXT("MINERAL BEARING   %.1f s"),Mode->GetMineralDetectorRemainingSeconds());
+        DrawText(DetectorText,DetectorGold,
+            PawnScreen.X-78.0f*UiScale,PawnScreen.Y+36.0f*UiScale,
+            Font,0.90f*UiScale,false);
     }
 
     if (bShowControls && !UsesMobileControls())
     {
         const float PanelY = Margin + 90.0f * UiScale;
         DrawRect(FLinearColor(0.015f, 0.02f, 0.025f, 0.72f),
-            Margin, PanelY, 270.0f * UiScale, 212.0f * UiScale);
+            Margin, PanelY, 310.0f * UiScale,
+            (bLunarWorld && !Machine ? 260.0f : 212.0f) * UiScale);
         if(Machine)
         {
             DrawText(FString::Printf(TEXT("In conveyor %.2f kg  |  Tail gate %.2f kg  |  Rear settled %.2f kg"),Machine->GetTroughMass(),Machine->GetTailCrossMass(),Machine->GetRearSettledMass()),
@@ -413,19 +464,27 @@ void ASandHUD::DrawHUD()
             DrawText(FString::Printf(TEXT("%s head  |  %.1f rpm  |  Chain %.2f m/s  |  Load %.1f / 240 Nm%s"),*Machine->GetHeadType(),Machine->GetDrumRPM(),Machine->GetConveyorSpeed(),Machine->GetLoadTorque(),FParse::Param(FCommandLine::Get(),TEXT("SandHeadInspect"))?TEXT("  |  CUTAWAY: casing contacts active"):TEXT("")),
                 FLinearColor(1,.8f,.3f),Margin,Canvas->SizeY-40*UiScale,Font,UiScale);
         }
-        const TCHAR* Lines[] =
-        {
+        TArray<FString> Lines = {
             TEXT("W / S       Drive forward / reverse"),
             TEXT("A / D       Steer left / right"),
             TEXT("SPACE       Brake"),
             Machine ? TEXT("Q/E  Raise/lower   R  Auto depth") : TEXT("Q / E       Boom up / down"),
             Machine ? TEXT("T / G       Motor on-off / reverse") : TEXT("R / F       Stick in / out"),
-            Machine ? TEXT("C View  RMB drag/arrows Orbit  P Points") : TEXT("T / G       Bucket curl / dump"),
-            bLunarWorld ? TEXT("C           Regional / close camera") : TEXT("H           Hide / show this help"),
-            bLunarWorld ? TEXT("H           Hide / show this help") : TEXT("ESC         Quit game"),
-            bLunarWorld ? TEXT("ESC         Quit game") : TEXT("")
-        };
-        for (int32 LineIndex = 0; LineIndex < UE_ARRAY_COUNT(Lines); ++LineIndex)
+            Machine ? TEXT("C View  RMB drag/arrows Orbit  P Points") : TEXT("T / G       Bucket curl / dump")};
+        if (bLunarWorld && !Machine)
+        {
+            Lines.Add(TEXT("ARROWS      Orbit camera"));
+            Lines.Add(TEXT("V           Mineral detector (5 s)"));
+            Lines.Add(TEXT("C           Regional / close camera"));
+            Lines.Add(TEXT("H           Hide / show this help"));
+            Lines.Add(TEXT("ESC         Quit game"));
+        }
+        else
+        {
+            Lines.Add(TEXT("H           Hide / show this help"));
+            Lines.Add(TEXT("ESC         Quit game"));
+        }
+        for (int32 LineIndex = 0; LineIndex < Lines.Num(); ++LineIndex)
         {
             const FLinearColor Color = LineIndex < 3
                 ? FLinearColor(0.86f, 0.91f, 1.0f)

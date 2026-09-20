@@ -6,6 +6,7 @@
 #include "SandLevelSettings.h"
 #include "SandLunarTerrain.h"
 #include "SandLunarWorldActor.h"
+#include "SandPreviewGameMode.h"
 
 #include "Camera/CameraComponent.h"
 #include "Components/BoxComponent.h"
@@ -328,8 +329,9 @@ void ASandExcavatorPawn::Tick(const float DeltaSeconds)
     const bool bBoundaryTest = FParse::Param(FCommandLine::Get(), TEXT("SandBoundaryTest"));
     const bool bBoomRaiseTest = FParse::Param(FCommandLine::Get(), TEXT("SandBoomRaiseTest"));
     const bool bWindowTest = FParse::Param(FCommandLine::Get(), TEXT("SandWindowTest"));
+    const bool bPrefetchTest = FParse::Param(FCommandLine::Get(),TEXT("SandPrefetchTest"));
     const bool bAutopilotDemo = bBoundaryTest || bBoomRaiseTest ||
-        bWindowTest ||
+        bWindowTest || bPrefetchTest ||
         FParse::Param(FCommandLine::Get(), TEXT("SandAutopilot")) ||
         FParse::Param(FCommandLine::Get(), TEXT("SandVictoryTest"));
     const bool bSlopeCoastTest = FParse::Param(FCommandLine::Get(), TEXT("SandSlopeCoastTest"));
@@ -343,7 +345,26 @@ void ASandExcavatorPawn::Tick(const float DeltaSeconds)
         !FParse::Param(FCommandLine::Get(),TEXT("SandBoundaryTest")) &&
         !FParse::Param(FCommandLine::Get(),TEXT("SandBoomRaiseTest")) &&
         !FParse::Param(FCommandLine::Get(),TEXT("SandSlopeCoastTest"));
-    if (bWindowTest && WindowTestTeleportCount < 4 &&
+    if (bPrefetchTest && WindowTestTeleportCount < 5 &&
+        ElapsedSimulationSeconds >= 2.0f + 2.0f * WindowTestTeleportCount)
+    {
+        static constexpr float TestXCentimeters[] = {150.0f,210.0f,270.0f,650.0f,770.0f};
+        FVector TestLocation = GetActorLocation();
+        TestLocation.X = TestXCentimeters[WindowTestTeleportCount];
+        TestLocation.Y = 0.0f;
+        const USandLevelSettings* Settings = GetDefault<USandLevelSettings>();
+        TestLocation.Z = 100.0f * Sand::Lunar::ActiveSurfaceHeightMeters(
+            TestLocation.X/100.0f,0.0f,Settings->SandDepthMeters,
+            Settings->LunarPlayableWidthMeters)+8.0f;
+        SetActorLocation(TestLocation,false,nullptr,ETeleportType::TeleportPhysics);
+        ChassisBody->SetPhysicsLinearVelocity(FVector::ZeroVector);
+        ChassisBody->SetPhysicsAngularVelocityInRadians(FVector::ZeroVector);
+        ++WindowTestTeleportCount;
+        UE_LOG(LogTemp,Display,
+            TEXT("LUNAR_PREFETCH_TEST step=%d location=(%.1f,%.1f,%.1f)cm"),
+            WindowTestTeleportCount,TestLocation.X,TestLocation.Y,TestLocation.Z);
+    }
+    else if (bWindowTest && WindowTestTeleportCount < 4 &&
         ElapsedSimulationSeconds >= 2.0f + 3.0f * WindowTestTeleportCount)
     {
         FVector TestLocation = GetActorLocation();
@@ -387,6 +408,45 @@ void ASandExcavatorPawn::Tick(const float DeltaSeconds)
             It->SetOverviewMode(bLunarOverview);
         }
     }
+    if (PlayerController && bLunarWorld && !Cast<ASandRoadheaderPawn>(this))
+    {
+        const float CameraYawInput =
+            (PlayerController->IsInputKeyDown(EKeys::Right) ? 1.0f : 0.0f) -
+            (PlayerController->IsInputKeyDown(EKeys::Left) ? 1.0f : 0.0f);
+        const float CameraPitchInput =
+            (PlayerController->IsInputKeyDown(EKeys::Up) ? 1.0f : 0.0f) -
+            (PlayerController->IsInputKeyDown(EKeys::Down) ? 1.0f : 0.0f);
+        if (!FMath::IsNearlyZero(CameraYawInput) || !FMath::IsNearlyZero(CameraPitchInput))
+        {
+            FRotator Orbit = CameraBoom->GetRelativeRotation();
+            Orbit.Yaw = FRotator::NormalizeAxis(
+                Orbit.Yaw + CameraYawInput * 70.0f * DeltaSeconds);
+            Orbit.Pitch = FMath::Clamp(
+                Orbit.Pitch + CameraPitchInput * 45.0f * DeltaSeconds,
+                -78.0f,-8.0f);
+            Orbit.Roll = 0.0f;
+            CameraBoom->SetRelativeRotation(Orbit);
+        }
+        if (PlayerController->WasInputKeyJustPressed(EKeys::V))
+        {
+            if (ASandPreviewGameMode* Mode =
+                Cast<ASandPreviewGameMode>(GetWorld()->GetAuthGameMode()))
+            {
+                Mode->ActivateMineralDetector(GetActorLocation());
+            }
+        }
+    }
+    if (bLunarWorld && !bDetectorTestActivated &&
+        FParse::Param(FCommandLine::Get(),TEXT("SandDetectorTest")) &&
+        ElapsedSimulationSeconds >= 1.0f)
+    {
+        if (ASandPreviewGameMode* Mode =
+            Cast<ASandPreviewGameMode>(GetWorld()->GetAuthGameMode()))
+        {
+            Mode->ActivateMineralDetector(GetActorLocation());
+            bDetectorTestActivated = true;
+        }
+    }
 
     float Throttle = 0.0f;
     float Steering = 0.0f;
@@ -394,7 +454,7 @@ void ASandExcavatorPawn::Tick(const float DeltaSeconds)
     float StickInput = 0.0f;
     float BucketInput = 0.0f;
     bool bBrake = false;
-    if (bWindowTest)
+    if (bWindowTest || bPrefetchTest)
     {
         bBrake = true;
     }

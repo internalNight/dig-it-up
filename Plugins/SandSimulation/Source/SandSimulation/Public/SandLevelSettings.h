@@ -39,6 +39,18 @@ public:
 
     UPROPERTY(Config, EditAnywhere, Category="Lunar World", meta=(ClampMin="0", ClampMax="320"))
     int32 LunarRockCount = 140;
+
+    /** Diameter of the buried faceted specimen; deliberately below half the bucket width. */
+    UPROPERTY(Config, EditAnywhere, Category="Lunar Mission", meta=(ClampMin="0.08", ClampMax="0.32", Units="m"))
+    float LunarGemDiameterMeters = 0.22f;
+
+    /** Vertical distance from the undisturbed surface to the specimen centre. */
+    UPROPERTY(Config, EditAnywhere, Category="Lunar Mission", meta=(ClampMin="0.12", ClampMax="0.8", Units="m"))
+    float LunarGemBurialDepthMeters = 0.30f;
+
+    UPROPERTY(Config, EditAnywhere, Category="Lunar Mission", meta=(ClampMin="1.0", ClampMax="15.0", Units="s"))
+    float LunarDetectorDurationSeconds = 5.0f;
+
     UPROPERTY(Config, EditAnywhere, Category="Victory", meta=(ClampMin="5", ClampMax="50"))
     float ExposedSideCentimeters = 10.0f;
     UPROPERTY(Config, EditAnywhere, Category="Victory", meta=(ClampMin="0", ClampMax="10"))
