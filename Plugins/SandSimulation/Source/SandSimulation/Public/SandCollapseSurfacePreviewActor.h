@@ -21,6 +21,10 @@ public:
 
     uint64 GetCompletedSimulationFrames() const { return CompletedSimulationFrames; }
     float GetLastGpuStepMilliseconds() const { return LastGpuStepMilliseconds; }
+    bool SampleSandSurfaceHeightCentimeters(
+        const FVector2D& WorldPositionCentimeters,
+        float RadiusCentimeters,
+        float& OutHeightCentimeters) const;
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Sand|Preview", meta = (ClampMin = "0.1", ClampMax = "2.0"))
     float SimulationSpeed = 1.0f;
@@ -46,4 +50,8 @@ private:
     float ToolSampleElapsedSeconds = 0.0f;
     bool bHasPreviousBucketTransform = false;
     FVector SmoothedBucketReactionImpulseMeters = FVector::ZeroVector;
+    TArray<float> SupportHeightGridCentimeters;
+    FIntPoint SupportHeightGridSize = FIntPoint::ZeroValue;
+    FVector2f SupportHeightGridMinimumMeters = FVector2f::ZeroVector;
+    float SupportHeightGridCellMeters = 0.1f;
 };

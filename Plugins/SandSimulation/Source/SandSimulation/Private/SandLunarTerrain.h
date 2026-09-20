@@ -86,8 +86,22 @@ inline float MacroSurfaceHeightMeters(
     const float U = X / Nobile03GroundSizeMeters + 0.5f;
     const float V = Y / Nobile03GroundSizeMeters + 0.5f;
     const float SourceCenter = SampleNobile03ElevationMeters(0.5f, 0.5f);
-    const float SourceRelief = SampleNobile03ElevationMeters(U, V) - SourceCenter;
+    const float SourceHalfExtent = 0.5f * Nobile03GroundSizeMeters;
+    const float SourceEdgeDistance = FMath::Max(FMath::Abs(X), FMath::Abs(Y));
+    const float SourceEnvelope = 1.0f - SmoothStep(
+        0.86f * SourceHalfExtent, SourceHalfExtent, SourceEdgeDistance);
+    const float SourceRelief =
+        (SampleNobile03ElevationMeters(U, V) - SourceCenter) * SourceEnvelope;
     float Height = BaseDepthMeters + SourceRelief;
+
+    // The embedded LROC crop is 1.024 km wide. Beyond it, continue the
+    // horizon with low-frequency synthetic relief instead of stretching the
+    // crop's border pixels into a flat plateau. This outer band is visual
+    // context, not represented as measured elevation in the documentation.
+    const float OuterBlend = 1.0f - SourceEnvelope;
+    Height += OuterBlend * (
+        7.5f * FMath::Sin(0.0065f * X + 0.0021f * Y) +
+        4.0f * FMath::Sin(0.0040f * Y - 0.0017f * X));
 
     // A dark, smoother mare-like basin makes a useful visual/gameplay contrast.
     const float MareRadius = FVector2f(X + 250.0f, Y + 35.0f).Size();
@@ -100,6 +114,8 @@ inline float MacroSurfaceHeightMeters(
     Height += CraterOffsetMeters(P, FVector2f(155.0f, -120.0f), 86.0f, 21.0f, 7.0f);
     Height += CraterOffsetMeters(P, FVector2f(250.0f, 185.0f), 34.0f, 7.0f, 2.4f);
     Height += CraterOffsetMeters(P, FVector2f(-315.0f, -175.0f), 28.0f, 5.0f, 1.8f);
+    Height += CraterOffsetMeters(P, FVector2f(690.0f, -420.0f), 145.0f, 29.0f, 9.0f);
+    Height += CraterOffsetMeters(P, FVector2f(-720.0f, 510.0f), 92.0f, 18.0f, 6.0f);
     Height += CraterOffsetMeters(P, FVector2f(-13.0f, 9.0f), 5.2f, 1.15f, 0.42f);
 
     // Blend the real-data terrain into the MPM boundary so the central solver

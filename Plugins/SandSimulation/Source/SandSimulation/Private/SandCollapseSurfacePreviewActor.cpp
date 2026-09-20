@@ -59,6 +59,16 @@ void ASandCollapseSurfacePreviewActor::BeginPlay()
     UE_LOG(LogTemp,Display,TEXT("SOIL_CONFIG phiDeg=%.3f cohesionPa=%.3f toolMu=%.3f dampingPerSec=%.3f dilationActive=%d dilationDeg=%.3f"),
         Material.InternalFrictionAngleDegrees,Material.CohesionPa,Material.ToolFrictionCoefficient,Material.VelocityDampingPerSecond,Material.bObjectiveMaterial,Material.DilationAngleDegrees);
     SimulationState = Sand::MPM::CreateRuntimeSandboxSimulation(Material);
+    SupportHeightGridCellMeters = SimulationState->CellSize;
+    SupportHeightGridMinimumMeters = FVector2f(
+        SimulationState->PhysicalMinimum.X, SimulationState->PhysicalMinimum.Y);
+    SupportHeightGridSize = FIntPoint(
+        FMath::CeilToInt((SimulationState->PhysicalMaximum.X - SimulationState->PhysicalMinimum.X) /
+            SupportHeightGridCellMeters) + 1,
+        FMath::CeilToInt((SimulationState->PhysicalMaximum.Y - SimulationState->PhysicalMinimum.Y) /
+            SupportHeightGridCellMeters) + 1);
+    SupportHeightGridCentimeters.Init(-TNumericLimits<float>::Max(),
+        SupportHeightGridSize.X * SupportHeightGridSize.Y);
     if (SimulationState->CellSize >= 0.099f)
     {
         // Match the mobile surface kernel to the coarser physical grid.
@@ -67,11 +77,11 @@ void ASandCollapseSurfacePreviewActor::BeginPlay()
     }
     else if (SimulationState->PhysicalMaximum.X - SimulationState->PhysicalMinimum.X > 8.0f)
     {
-        // The 10 m lunar patch uses a 6.25 cm physical grid by default. Keep
+        // The 10 m lunar patch uses a 7.5 cm physical grid by default. Keep
         // the visible surface slightly coarser so its 4x plan area remains
         // practical on the project's 8 GB target GPU.
-        VoxelSizeMeters = 0.075f;
-        KernelRadiusMeters = 0.12f;
+        VoxelSizeMeters = 0.09f;
+        KernelRadiusMeters = 0.145f;
         // The finite MPM volume is visually continued by the transition mesh.
         // Its closed marching-cubes side faces must not cast a square shadow.
         SurfaceMesh->SetCastShadow(false);
@@ -154,6 +164,58 @@ void ASandCollapseSurfacePreviewActor::OnSurfaceMeshUpdated(
     {
         Mode->CheckExposedFloor(Vertices, Indices);
     }
+}
+
+bool ASandCollapseSurfacePreviewActor::SampleSandSurfaceHeightCentimeters(
+    const FVector2D& WorldPositionCentimeters,
+    const float RadiusCentimeters,
+    float& OutHeightCentimeters) const
+{
+    if (SupportHeightGridCentimeters.IsEmpty() || SupportHeightGridSize.X <= 0 ||
+        SupportHeightGridSize.Y <= 0)
+    {
+        return false;
+    }
+    const FVector2f PositionMeters(WorldPositionCentimeters / 100.0f);
+    const FVector2f GridPosition =
+        (PositionMeters - SupportHeightGridMinimumMeters) / SupportHeightGridCellMeters;
+    const int32 RadiusCells = FMath::Max(1,
+        FMath::CeilToInt((RadiusCentimeters / 100.0f) / SupportHeightGridCellMeters));
+    const int32 CenterX = FMath::RoundToInt(GridPosition.X);
+    const int32 CenterY = FMath::RoundToInt(GridPosition.Y);
+    TArray<float, TInlineAllocator<128>> Heights;
+    for (int32 Y = CenterY - RadiusCells; Y <= CenterY + RadiusCells; ++Y)
+    {
+        for (int32 X = CenterX - RadiusCells; X <= CenterX + RadiusCells; ++X)
+        {
+            if (X < 0 || Y < 0 || X >= SupportHeightGridSize.X || Y >= SupportHeightGridSize.Y)
+            {
+                continue;
+            }
+            const FVector2f CellPosition = SupportHeightGridMinimumMeters +
+                FVector2f(X, Y) * SupportHeightGridCellMeters;
+            if ((CellPosition - PositionMeters).SquaredLength() >
+                FMath::Square(RadiusCentimeters / 100.0f + 0.5f * SupportHeightGridCellMeters))
+            {
+                continue;
+            }
+            const float Height = SupportHeightGridCentimeters[X + Y * SupportHeightGridSize.X];
+            if (Height > -TNumericLimits<float>::Max() * 0.5f)
+            {
+                Heights.Add(Height);
+            }
+        }
+    }
+    if (Heights.IsEmpty())
+    {
+        return false;
+    }
+    Heights.Sort();
+    // A high percentile follows the upper bearing envelope while rejecting a
+    // lone airborne particle that would otherwise kick a rigid rock upward.
+    OutHeightCentimeters = Heights[FMath::Clamp(
+        FMath::FloorToInt(0.75f * (Heights.Num() - 1)), 0, Heights.Num() - 1)];
+    return true;
 }
 
 void ASandCollapseSurfacePreviewActor::Tick(const float DeltaSeconds)
@@ -310,8 +372,11 @@ void ASandCollapseSurfacePreviewActor::Tick(const float DeltaSeconds)
     // previous GPU density readback, CPU extraction and upload complete.
     // Slow devices naturally skip busy frames without paying for a particle
     // readback whose data would otherwise be discarded.
+    const bool bExpandedLunarPatch =
+        SimulationState->PhysicalMaximum.X - SimulationState->PhysicalMinimum.X > 8.0f;
     const uint32 SurfaceStride = SimulationState->CellSize >= 0.099f
-        ? 1u : static_cast<uint32>(FMath::RoundToInt(0.1f / FixedFrameSeconds));
+        ? 1u : (bExpandedLunarPatch ? 2u :
+            static_cast<uint32>(FMath::RoundToInt(0.1f / FixedFrameSeconds)));
     const bool bRefreshSurface = !IsSurfaceBuildInFlight() &&
         CompletedSimulationFrames + FramesToAdvance >= LastSurfaceSampleFrame + SurfaceStride;
     if (bRefreshSurface)
@@ -469,6 +534,27 @@ void ASandCollapseSurfacePreviewActor::Tick(const float DeltaSeconds)
                         PitSurfaceZ = FMath::Max(PitSurfaceZ, Position.Z + 0.03125f);
                     }
                 }
+                WeakThis->SupportHeightGridCentimeters.Init(-TNumericLimits<float>::Max(),
+                    WeakThis->SupportHeightGridSize.X * WeakThis->SupportHeightGridSize.Y);
+                const float ParticleSurfaceRadiusCentimeters =
+                    42.0f * WeakThis->SimulationState->CellSize;
+                for (const FVector3f& Position : SupportPositions)
+                {
+                    const int32 GridX = FMath::FloorToInt(
+                        (Position.X - WeakThis->SupportHeightGridMinimumMeters.X) /
+                        WeakThis->SupportHeightGridCellMeters);
+                    const int32 GridY = FMath::FloorToInt(
+                        (Position.Y - WeakThis->SupportHeightGridMinimumMeters.Y) /
+                        WeakThis->SupportHeightGridCellMeters);
+                    if (GridX >= 0 && GridY >= 0 && GridX < WeakThis->SupportHeightGridSize.X &&
+                        GridY < WeakThis->SupportHeightGridSize.Y)
+                    {
+                        float& Height = WeakThis->SupportHeightGridCentimeters[
+                            GridX + GridY * WeakThis->SupportHeightGridSize.X];
+                        Height = FMath::Max(Height,
+                            Position.Z * 100.0f + ParticleSurfaceRadiusCentimeters);
+                    }
+                }
                 if (bLogFrame && FParse::Param(FCommandLine::Get(), TEXT("SandPitTest")))
                 {
                     UE_LOG(LogTemp, Display, TEXT("Pit retention: sim %.2f s, centre depth %.3f m, particles %d"),
@@ -479,7 +565,7 @@ void ASandCollapseSurfacePreviewActor::Tick(const float DeltaSeconds)
                     const float CellSizeCm = 100.0f * WeakThis->SimulationState->CellSize;
                     const float SurfaceRadiusCm = FParse::Param(FCommandLine::Get(), TEXT("SandDirectReaction"))
                         ? 0.5f * CellSizeCm
-                        : (CellSizeCm >= 9.5f ? 0.5f * CellSizeCm - 0.5f : 2.625f);
+                        : (CellSizeCm >= 9.5f ? 0.5f * CellSizeCm - 0.5f : 0.42f * CellSizeCm);
                     WeakExcavator->UpdateSandSupportSurface(
                         SupportPositions, CellSizeCm, SurfaceRadiusCm);
                 }

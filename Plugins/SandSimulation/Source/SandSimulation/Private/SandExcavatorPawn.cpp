@@ -267,11 +267,11 @@ void ASandExcavatorPawn::BeginPlay()
         // Frame the expanded excavation patch and its near-field relief rather
         // than retaining the tight camera designed for the five-metre box.
         bLunarOverview = FParse::Param(FCommandLine::Get(),TEXT("SandLunarOverview"));
-        CameraBoom->TargetArmLength = bLunarOverview ? 40000.0f : 500.0f;
+        CameraBoom->TargetArmLength = bLunarOverview ? 55000.0f : 750.0f;
         CameraBoom->SetRelativeRotation(bLunarOverview
-            ? FRotator(-55.0f,-58.0f,0.0f) : FRotator(-28.0f,-58.0f,0.0f));
+            ? FRotator(-48.0f,-58.0f,0.0f) : FRotator(-20.0f,-58.0f,0.0f));
         CameraBoom->bDoCollisionTest = !bLunarOverview;
-        FollowCamera->FieldOfView = bLunarOverview ? 75.0f : 65.0f;
+        FollowCamera->FieldOfView = bLunarOverview ? 72.0f : 62.0f;
         FollowCamera->PostProcessBlendWeight = 1.0f;
         FPostProcessSettings& Exposure = FollowCamera->PostProcessSettings;
         Exposure.bOverride_AutoExposureMethod = true;
@@ -337,11 +337,11 @@ void ASandExcavatorPawn::Tick(const float DeltaSeconds)
     if (PlayerController && bLunarWorld && PlayerController->WasInputKeyJustPressed(EKeys::C))
     {
         bLunarOverview = !bLunarOverview;
-        CameraBoom->TargetArmLength = bLunarOverview ? 40000.0f : 500.0f;
+        CameraBoom->TargetArmLength = bLunarOverview ? 55000.0f : 750.0f;
         CameraBoom->SetRelativeRotation(bLunarOverview
-            ? FRotator(-55.0f,-58.0f,0.0f) : FRotator(-28.0f,-58.0f,0.0f));
+            ? FRotator(-48.0f,-58.0f,0.0f) : FRotator(-20.0f,-58.0f,0.0f));
         CameraBoom->bDoCollisionTest = !bLunarOverview;
-        FollowCamera->FieldOfView = bLunarOverview ? 75.0f : 65.0f;
+        FollowCamera->FieldOfView = bLunarOverview ? 72.0f : 62.0f;
     }
 
     float Throttle = 0.0f;
@@ -720,7 +720,9 @@ void ASandExcavatorPawn::ApplySandSuspension(
     const float DeltaSeconds,
     const bool bBrakeApplied)
 {
-    constexpr float TrackBottomOffsetCentimeters = 7.75f;
+    const float TrackBottomOffsetCentimeters = -(
+        LeftTrackCollider->GetRelativeLocation().Z -
+        LeftTrackCollider->GetUnscaledBoxExtent().Z);
     constexpr float SuspensionStiffness = 1450.0f;
     constexpr float SuspensionDamping = 360.0f;
     constexpr float MaximumSupportForce = 34000.0f;

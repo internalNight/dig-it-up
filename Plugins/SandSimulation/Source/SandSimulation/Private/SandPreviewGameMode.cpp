@@ -184,6 +184,30 @@ void ASandPreviewGameMode::BeginPlay()
     SkyLight->GetLightComponent()->SetIntensity(bLunarWorld ? 0.08f : 0.65f);
     SkyLight->GetLightComponent()->RecaptureSky();
 
+    if (bLunarWorld)
+    {
+        // The lightweight runtime map otherwise clears to editor grey. An
+        // inward-facing, non-colliding black sphere provides the airless lunar
+        // sky without an atmosphere or fog layer.
+        UStaticMesh* SkySphereMesh = LoadObject<UStaticMesh>(nullptr,
+            TEXT("/Engine/BasicShapes/Cube.Cube"));
+        UMaterialInterface* SkyMaterial = LoadObject<UMaterialInterface>(nullptr,
+            TEXT("/Game/Materials/M_LunarSky.M_LunarSky"));
+        if (SkySphereMesh != nullptr && SkyMaterial != nullptr)
+        {
+            AStaticMeshActor* SkySphere = World->SpawnActor<AStaticMeshActor>(
+                FVector::ZeroVector,FRotator::ZeroRotator);
+            UStaticMeshComponent* SkyMesh = SkySphere->GetStaticMeshComponent();
+            SkyMesh->SetStaticMesh(SkySphereMesh);
+            SkyMesh->SetWorldScale3D(FVector(10000.0f));
+            SkyMesh->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+            SkyMesh->SetCastShadow(false);
+            SkyMesh->SetMaterial(0,SkyMaterial);
+            UE_LOG(LogTemp,Display,TEXT("LUNAR_SKY material=%s shape=inward-two-sided-cube"),
+                *SkyMaterial->GetPathName());
+        }
+    }
+
     if (!bLunarWorld)
     {
         AExponentialHeightFog* HorizonFog = World->SpawnActor<AExponentialHeightFog>(

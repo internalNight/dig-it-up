@@ -20,8 +20,8 @@ public:
     UPROPERTY(Config, EditAnywhere, Category="Level", meta=(ClampMin="5.0", ClampMax="14.0", Units="m"))
     float ActiveWidthMeters = 10.0f;
 
-    UPROPERTY(Config, EditAnywhere, Category="Lunar World", meta=(ClampMin="256.0", ClampMax="1024.0", Units="m"))
-    float LunarLandscapeSizeMeters = 1024.0f;
+    UPROPERTY(Config, EditAnywhere, Category="Lunar World", meta=(ClampMin="256.0", ClampMax="4096.0", Units="m"))
+    float LunarLandscapeSizeMeters = 2048.0f;
 
     UPROPERTY(Config, EditAnywhere, Category="Lunar World", meta=(ClampMin="33", ClampMax="257"))
     int32 LunarLandscapeResolution = 257;

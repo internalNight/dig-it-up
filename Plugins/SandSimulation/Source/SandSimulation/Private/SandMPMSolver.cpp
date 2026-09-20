@@ -341,9 +341,10 @@ TSharedRef<FRuntimeSimulationState, ESPMode::ThreadSafe> CreateRuntimeSandboxSim
         !FParse::Param(FCommandLine::Get(), TEXT("SandLegacyBox")) && !bBench && !bLegacyAcceptance;
     if (bLunarWorld && Quality.IsEmpty())
     {
-        // Four times the playable area at a bounded point count. The current
-        // 8 GB target cannot keep the old 5 cm grid over the enlarged volume.
-        State->CellSize = 0.0625f;
+        // Keep the ten-metre interactive patch responsive. A 7.5 cm grid has
+        // about 42% fewer particles than the previous 6.25 cm default while
+        // retaining centimetre-scale bucket/track interaction.
+        State->CellSize = 0.075f;
     }
     if (bBench && Quality.IsEmpty()) State->CellSize = 0.025f;
     State->InternalDeltaSeconds = 1.0f / (State->CellSize <= 0.025f ? 1200.0f : State->CellSize <= 0.03125f ? 900.0f : State->CellSize <= 0.05f ? 600.0f : 300.0f);
@@ -351,6 +352,12 @@ TSharedRef<FRuntimeSimulationState, ESPMode::ThreadSafe> CreateRuntimeSandboxSim
     {
         // Eight internal steps per 30 Hz coupling frame save two full
         // particle/grid passes while retaining the same physical outer step.
+        State->InternalDeltaSeconds = 1.0f / 240.0f;
+    }
+    if (bLunarWorld && Quality.IsEmpty())
+    {
+        // The coarser lunar grid is stable at the same eight substeps used by
+        // the mobile tier, avoiding two full transfers per 30 Hz game step.
         State->InternalDeltaSeconds = 1.0f / 240.0f;
     }
     int32 InternalHz = 0;

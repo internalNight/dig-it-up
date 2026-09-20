@@ -3,8 +3,9 @@
 ## Lunar field (2026-09-20)
 
 The default source-built scene is now a lunar excavation field: a fully movable
-10 x 10 m GPU-MPM regolith patch sits inside a 1,024 m LROC-informed landscape
-with highlands, a mare-like basin, impact craters and scattered rocks. The
+10 x 10 m GPU-MPM regolith patch sits inside a 2,048 m lunar landscape whose
+central 1,024 m uses embedded LROC relief, with highlands, a mare-like basin,
+impact craters and scattered rocks. The
 original digging objective is preserved as a buried survey marker. Double-click
 `PlayLunarWorld.cmd` to run it, or use `-SandLegacyBox` for the earlier box scene.
 
@@ -115,12 +116,12 @@ functional transport does not establish real-machine performance.
 ## Baseline target
 
 - Windows PC, DX12 and Shader Model 6
-- One 10 m x 10 m fully granular excavation patch inside 1,024 m static context
+- One 10 m x 10 m fully granular excavation patch inside 2,048 m visual context
 - No visible retaining walls in the lunar profile; the upper boundary remains open
 - Nominal 1.2 m granular depth with local highland and crater relief
-- 6.25 cm dense full-volume physics cells by default
-- 5 cm independent surface-reconstruction voxels
-- 30 Hz outer physics, 300 Hz internal MPM steps, 60 FPS game rendering and 10 Hz asynchronous bulk-surface updates
+- 7.5 cm dense full-volume physics cells by default (283,807 material points)
+- 9 cm independent surface-reconstruction voxels
+- 30 Hz outer physics, 240 Hz internal MPM steps, 60 FPS game target and 15 Hz asynchronous bulk-surface requests
 - RTX 4070 Laptop 8 GB development target
 - Single player, one dry-sand material, no open world or networking
 
@@ -188,8 +189,10 @@ world-space opening direction. This keeps unloading reliable when the chassis is
 pitched on an excavated slope. Rendering is capped at 60 FPS independently of the
 fixed 30 Hz MPM update, avoiding unnecessary GPU load above the prototype target.
 
-Measured on the RTX 4070 Laptop: warmed MPM work is typically 20-28 ms per 30 Hz
-outer frame, with occasional surface/readback spikes around 37 ms; the optimized asynchronous surface mesh is about 46-53 ms at 10 Hz. The packaged
+Measured on the RTX 4070 Laptop for the legacy packaged 5 m build: warmed MPM
+work is typically 20-28 ms per 30 Hz outer frame, with occasional surface/readback
+spikes around 37 ms; its optimized asynchronous surface mesh is about 46-53 ms
+at 10 Hz. The packaged
 Development build peaked at 2,062 MB private memory during an automated run.
 
 If the editor shows a large detailed landscape in an `Untitled` level, do not run the

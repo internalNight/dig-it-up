@@ -2,13 +2,15 @@
 
 #include "SandLevelSettings.h"
 #include "SandLunarTerrain.h"
+#include "SandCollapseSurfacePreviewActor.h"
 
-#include "Components/HierarchicalInstancedStaticMeshComponent.h"
 #include "Components/SceneComponent.h"
-#include "Engine/StaticMesh.h"
-#include "Materials/MaterialInstanceDynamic.h"
+#include "Engine/CollisionProfile.h"
+#include "EngineUtils.h"
 #include "Materials/MaterialInterface.h"
 #include "Misc/AutomationTest.h"
+#include "Misc/CommandLine.h"
+#include "Misc/Parse.h"
 #include "ProceduralMeshComponent.h"
 #include "UObject/ConstructorHelpers.h"
 
@@ -68,7 +70,9 @@ void AppendQuad(
         }
         else
         {
-            Mesh.Colors.Add(Color);
+            const float Tone = 0.92f + 0.08f * FMath::PerlinNoise2D(
+                FVector2D(Point.X + 11.7f,Point.Y - 3.2f) * 1.15f);
+            Mesh.Colors.Add(Color * Tone);
         }
     }
     Mesh.Indices.Append({First, First + 2, First + 1, First, First + 3, First + 2});
@@ -80,11 +84,101 @@ void UploadSection(UProceduralMeshComponent* Component, const int32 Section, FMe
         Section, Mesh.Vertices, Mesh.Indices, Mesh.Normals, Mesh.UVs, Mesh.Colors,
         TArray<FProcMeshTangent>(), Collision, false);
 }
+
+void AppendAngularRock(
+    FMeshSectionData& Mesh,
+    FRandomStream& Random,
+    const FVector& CenterCentimeters,
+    const FVector& HalfExtentCentimeters,
+    const FQuat& Rotation,
+    const FLinearColor& BaseColor,
+    TArray<FVector>* OutConvexVertices = nullptr)
+{
+    constexpr float Phi = 1.61803398875f;
+    const FVector BaseVertices[12] =
+    {
+        {-1,Phi,0},{1,Phi,0},{-1,-Phi,0},{1,-Phi,0},
+        {0,-1,Phi},{0,1,Phi},{0,-1,-Phi},{0,1,-Phi},
+        {Phi,0,-1},{Phi,0,1},{-Phi,0,-1},{-Phi,0,1}
+    };
+    static const int32 Faces[20][3] =
+    {
+        {0,11,5},{0,5,1},{0,1,7},{0,7,10},{0,10,11},
+        {1,5,9},{5,11,4},{11,10,2},{10,7,6},{7,1,8},
+        {3,9,4},{3,4,2},{3,2,6},{3,6,8},{3,8,9},
+        {4,9,5},{2,4,11},{6,2,10},{8,6,7},{9,8,1}
+    };
+    FVector UnitVertices[12];
+    float RadiusNoise[12];
+    FVector RockVertices[12];
+    for (int32 VertexIndex = 0; VertexIndex < 12; ++VertexIndex)
+    {
+        RadiusNoise[VertexIndex] = Random.FRandRange(0.78f, 1.18f);
+        UnitVertices[VertexIndex] = BaseVertices[VertexIndex].GetSafeNormal();
+        const FVector UnitVertex = UnitVertices[VertexIndex];
+        const FVector Shaped = FVector(
+            UnitVertex.X * HalfExtentCentimeters.X,
+            UnitVertex.Y * HalfExtentCentimeters.Y,
+            UnitVertex.Z * HalfExtentCentimeters.Z) * RadiusNoise[VertexIndex];
+        RockVertices[VertexIndex] = CenterCentimeters + Rotation.RotateVector(Shaped);
+        if (OutConvexVertices != nullptr)
+        {
+            OutConvexVertices->Add(RockVertices[VertexIndex]);
+        }
+    }
+    const auto MakePoint = [&CenterCentimeters,&HalfExtentCentimeters,&Rotation](
+        const FVector UnitDirection,const float Noise)
+    {
+        return CenterCentimeters + Rotation.RotateVector(FVector(
+            UnitDirection.X * HalfExtentCentimeters.X,
+            UnitDirection.Y * HalfExtentCentimeters.Y,
+            UnitDirection.Z * HalfExtentCentimeters.Z) * Noise);
+    };
+    for (const int32* Face : Faces)
+    {
+        const FVector A = RockVertices[Face[0]];
+        const FVector B = RockVertices[Face[1]];
+        const FVector C = RockVertices[Face[2]];
+        const FVector AB = MakePoint(
+            (UnitVertices[Face[0]] + UnitVertices[Face[1]]).GetSafeNormal(),
+            0.5f * (RadiusNoise[Face[0]] + RadiusNoise[Face[1]]));
+        const FVector BC = MakePoint(
+            (UnitVertices[Face[1]] + UnitVertices[Face[2]]).GetSafeNormal(),
+            0.5f * (RadiusNoise[Face[1]] + RadiusNoise[Face[2]]));
+        const FVector CA = MakePoint(
+            (UnitVertices[Face[2]] + UnitVertices[Face[0]]).GetSafeNormal(),
+            0.5f * (RadiusNoise[Face[2]] + RadiusNoise[Face[0]]));
+        const FVector Triangles[4][3] =
+        {
+            {A,AB,CA},{AB,B,BC},{CA,BC,C},{AB,BC,CA}
+        };
+        for (const FVector* Triangle : Triangles)
+        {
+            const FVector Normal = FVector::CrossProduct(
+                Triangle[1] - Triangle[0],Triangle[2] - Triangle[0]).GetSafeNormal();
+            const int32 First = Mesh.Vertices.Num();
+            const float Tone = Random.FRandRange(0.80f, 1.20f);
+            const FLinearColor FaceColor(
+                FMath::Min(1.0f, BaseColor.R * Tone),
+                FMath::Min(1.0f, BaseColor.G * Tone),
+                FMath::Min(1.0f, BaseColor.B * Tone), 1.0f);
+            for (int32 Corner = 0; Corner < 3; ++Corner)
+            {
+                const FVector Vertex = Triangle[Corner];
+                Mesh.Vertices.Add(Vertex);
+                Mesh.Normals.Add(Normal);
+                Mesh.UVs.Add(FVector2D(Vertex.X,Vertex.Y) * 0.01f);
+                Mesh.Colors.Add(FaceColor);
+            }
+            Mesh.Indices.Append({First,First + 1,First + 2});
+        }
+    }
+}
 }
 
 ASandLunarWorldActor::ASandLunarWorldActor()
 {
-    PrimaryActorTick.bCanEverTick = false;
+    PrimaryActorTick.bCanEverTick = true;
     SceneRoot = CreateDefaultSubobject<USceneComponent>(TEXT("SceneRoot"));
     SetRootComponent(SceneRoot);
 
@@ -94,9 +188,9 @@ ASandLunarWorldActor::ASandLunarWorldActor()
     MacroTerrain->SetCastShadow(true);
     TransitionTerrain = CreateDefaultSubobject<UProceduralMeshComponent>(TEXT("TransitionTerrain"));
     TransitionTerrain->SetupAttachment(SceneRoot);
-    TransitionTerrain->SetRelativeLocation(FVector(0.0f,0.0f,1.0f));
+    TransitionTerrain->SetRelativeLocation(FVector(0.0f,0.0f,-1.0f));
     TransitionTerrain->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
-    TransitionTerrain->SetCastShadow(true);
+    TransitionTerrain->SetCastShadow(false);
     static ConstructorHelpers::FObjectFinder<UMaterialInterface> VertexColorMaterial(
         TEXT("/Engine/EngineDebugMaterials/VertexColorMaterial.VertexColorMaterial"));
     if (VertexColorMaterial.Succeeded())
@@ -105,39 +199,27 @@ ASandLunarWorldActor::ASandLunarWorldActor()
         TransitionTerrain->SetMaterial(0,VertexColorMaterial.Object);
     }
 
-    Rocks = CreateDefaultSubobject<UHierarchicalInstancedStaticMeshComponent>(TEXT("LunarRocks"));
-    Rocks->SetupAttachment(SceneRoot);
-    Rocks->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
-    Rocks->SetCastShadow(true);
-
-    static ConstructorHelpers::FObjectFinder<UStaticMesh> SphereMesh(TEXT("/Engine/BasicShapes/Sphere.Sphere"));
-    if (SphereMesh.Succeeded())
+    StaticRocks = CreateDefaultSubobject<UProceduralMeshComponent>(TEXT("StaticLunarRocks"));
+    StaticRocks->SetupAttachment(SceneRoot);
+    StaticRocks->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+    StaticRocks->SetCastShadow(true);
+    if (VertexColorMaterial.Succeeded())
     {
-        Rocks->SetStaticMesh(SphereMesh.Object);
+        StaticRocks->SetMaterial(0,VertexColorMaterial.Object);
     }
 }
 
 void ASandLunarWorldActor::BeginPlay()
 {
     Super::BeginPlay();
-    // BasicShapeMaterial exposes a runtime Color parameter. The existing
-    // regolith material has baked colour, so it cannot distinguish mare and
-    // highland sections without authoring another binary asset.
-    UMaterialInterface* BaseMaterial = LoadObject<UMaterialInterface>(nullptr,
-        TEXT("/Engine/BasicShapes/BasicShapeMaterial.BasicShapeMaterial"));
-    if (BaseMaterial != nullptr)
-    {
-        HighlandMaterial = UMaterialInstanceDynamic::Create(BaseMaterial, this);
-        const FLinearColor HighlandColor = FLinearColor::FromSRGBColor(FColor(126,128,134));
-        HighlandMaterial->SetVectorParameterValue(TEXT("Color"), HighlandColor);
-        HighlandMaterial->SetVectorParameterValue(TEXT("DiffuseColor"), HighlandColor);
-        HighlandMaterial->SetScalarParameterValue(TEXT("Roughness"), 0.94f);
-        Rocks->SetMaterial(0, HighlandMaterial);
-    }
-
     BuildMacroTerrain();
     BuildTransitionTerrain();
     BuildRocks();
+    for (TActorIterator<ASandCollapseSurfacePreviewActor> It(GetWorld()); It; ++It)
+    {
+        SandSurface = *It;
+        break;
+    }
 }
 
 void ASandLunarWorldActor::BuildMacroTerrain()
@@ -161,7 +243,7 @@ void ASandLunarWorldActor::BuildMacroTerrain()
             const float X1 = X0 + Step;
             const float Y1 = Y0 + Step;
             const FVector2f Center(0.5f * (X0 + X1), 0.5f * (Y0 + Y1));
-            if (FMath::Max(FMath::Abs(Center.X), FMath::Abs(Center.Y)) < 11.0f)
+            if (FMath::Max(FMath::Abs(Center.X), FMath::Abs(Center.Y)) < 60.0f)
             {
                 continue;
             }
@@ -177,8 +259,8 @@ void ASandLunarWorldActor::BuildTransitionTerrain()
     const USandLevelSettings* Settings = GetDefault<USandLevelSettings>();
     const float BaseDepth = Settings->SandDepthMeters;
     const float ActiveWidth = Settings->ActiveWidthMeters;
-    constexpr float HalfRing = 12.0f;
-    constexpr float Step = 0.5f;
+    constexpr float HalfRing = 64.0f;
+    constexpr float Step = 1.0f;
     // Slight overlap hides the independent marching-cubes edge without
     // covering the playable top surface.
     const float HoleHalf = 0.5f * ActiveWidth - 0.80f;
@@ -201,28 +283,37 @@ void ASandLunarWorldActor::BuildTransitionTerrain()
 
 void ASandLunarWorldActor::BuildRocks()
 {
-    if (Rocks->GetStaticMesh() == nullptr)
-    {
-        return;
-    }
     const USandLevelSettings* Settings = GetDefault<USandLevelSettings>();
     const float BaseDepth = Settings->SandDepthMeters;
     const float ActiveWidth = Settings->ActiveWidthMeters;
     const float HalfWorld = 0.5f * Settings->LunarLandscapeSizeMeters;
     FRandomStream Random(0x4c524f43); // "LROC", deterministic across runs.
     const int32 RockCount = FMath::Clamp(Settings->LunarRockCount, 0, 320);
+    constexpr int32 DynamicRockCount = 10;
+    FMeshSectionData FarRockMesh;
+    const FLinearColor DarkRockColor =
+        FLinearColor::FromSRGBColor(FColor(96,100,106));
+    UMaterialInterface* VertexColorMaterial = LoadObject<UMaterialInterface>(nullptr,
+        TEXT("/Engine/EngineDebugMaterials/VertexColorMaterial.VertexColorMaterial"));
+    UMaterialInterface* RockMaterial = LoadObject<UMaterialInterface>(nullptr,
+        TEXT("/Game/Materials/M_LunarRock.M_LunarRock"));
+    if (RockMaterial == nullptr)
+    {
+        RockMaterial = VertexColorMaterial;
+    }
+    StaticRocks->SetMaterial(0,RockMaterial);
     for (int32 Index = 0; Index < RockCount; ++Index)
     {
         FVector2f P;
-        const bool bLocalRock = Index < FMath::Min(10, RockCount);
+        const bool bLocalRock = Index < FMath::Min(DynamicRockCount, RockCount);
         if (bLocalRock)
         {
             do
             {
-                P = FVector2f(Random.FRandRange(-0.45f * ActiveWidth, 0.45f * ActiveWidth),
-                    Random.FRandRange(-0.45f * ActiveWidth, 0.45f * ActiveWidth));
+                P = FVector2f(Random.FRandRange(-0.42f * ActiveWidth, 0.42f * ActiveWidth),
+                    Random.FRandRange(-0.42f * ActiveWidth, 0.42f * ActiveWidth));
             }
-            while (P.Size() < 1.7f);
+            while (P.Size() < 1.55f || (P - FVector2f(-1.0f,0.0f)).Size() < 1.0f);
         }
         else
         {
@@ -237,13 +328,151 @@ void ASandLunarWorldActor::BuildRocks()
             ? Sand::Lunar::ActiveSurfaceHeightMeters(P.X,P.Y,BaseDepth,ActiveWidth)
             : Sand::Lunar::MacroSurfaceHeightMeters(P.X, P.Y, BaseDepth, ActiveWidth);
         const float Radius = bLocalRock
-            ? Random.FRandRange(0.05f,0.18f)
-            : Random.FRandRange(0.25f, Index % 13 == 0 ? 2.4f : 1.1f);
-        // The Engine sphere has a 0.5 m radius at unit scale.
-        const FVector Scale(2.0f * Radius, 1.4f * Radius * Random.FRandRange(0.65f,1.25f),
-            1.2f * Radius * Random.FRandRange(0.55f,1.10f));
+            ? Random.FRandRange(0.10f,0.28f)
+            : Random.FRandRange(0.25f, Index % 13 == 0 ? 2.6f : 1.2f);
+        const FVector HalfExtentCentimeters(
+            100.0f * Radius * Random.FRandRange(0.82f,1.16f),
+            100.0f * Radius * Random.FRandRange(0.76f,1.12f),
+            100.0f * Radius * Random.FRandRange(0.62f,1.02f));
         const FRotator Rotation(Random.FRandRange(-18.0f,18.0f),Random.FRandRange(0.0f,360.0f),Random.FRandRange(-20.0f,20.0f));
-        Rocks->AddInstance(FTransform(Rotation, FVector(P.X,P.Y,Height + 0.45f * Radius) * 100.0f, Scale), true);
+        if (!bLocalRock)
+        {
+            AppendAngularRock(FarRockMesh,Random,
+                FVector(P.X,P.Y,Height + 0.42f * Radius) * 100.0f,
+                HalfExtentCentimeters,Rotation.Quaternion(),DarkRockColor);
+            continue;
+        }
+
+        UProceduralMeshComponent* Rock = NewObject<UProceduralMeshComponent>(
+            this,*FString::Printf(TEXT("MovableLunarRock_%02d"),Index));
+        AddInstanceComponent(Rock);
+        Rock->SetupAttachment(SceneRoot);
+        Rock->SetMobility(EComponentMobility::Movable);
+        Rock->SetCastShadow(true);
+        Rock->bUseComplexAsSimpleCollision = false;
+        Rock->bUseAsyncCooking = false;
+        if (RockMaterial != nullptr)
+        {
+            Rock->SetMaterial(0,RockMaterial);
+        }
+        FMeshSectionData RockMesh;
+        TArray<FVector> ConvexVertices;
+        AppendAngularRock(RockMesh,Random,FVector::ZeroVector,HalfExtentCentimeters,
+            FQuat::Identity,DarkRockColor,&ConvexVertices);
+        UploadSection(Rock,0,MoveTemp(RockMesh),false);
+        Rock->AddCollisionConvexMesh(ConvexVertices);
+        Rock->SetCollisionProfileName(UCollisionProfile::PhysicsActor_ProfileName);
+        Rock->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
+        Rock->SetWorldLocation(FVector(P.X,P.Y,Height) * 100.0f +
+            FVector(0.0f,0.0f,0.72f * HalfExtentCentimeters.Z));
+        Rock->SetWorldRotation(Rotation);
+        Rock->SetLinearDamping(0.35f);
+        Rock->SetAngularDamping(0.90f);
+        Rock->RegisterComponent();
+        const float VolumeCubicMeters = 3.1f *
+            FMath::Pow(Radius,3.0f);
+        Rock->SetMassOverrideInKg(NAME_None,
+            FMath::Clamp(2700.0f * VolumeCubicMeters,8.0f,220.0f),true);
+        Rock->SetSimulatePhysics(true);
+        DynamicRocks.Add(Rock);
+        DynamicRockSupportRadiiCentimeters.Add(
+            FMath::Max(HalfExtentCentimeters.X,HalfExtentCentimeters.Y));
+        DynamicRockHalfHeightsCentimeters.Add(HalfExtentCentimeters.Z);
+    }
+    UploadSection(StaticRocks,0,MoveTemp(FarRockMesh),false);
+    UE_LOG(LogTemp,Display,
+        TEXT("LUNAR_ROCKS dynamicRigid=%d staticContext=%d shape=irregular-convex color=charcoal"),
+        DynamicRocks.Num(),FMath::Max(0,RockCount-DynamicRocks.Num()));
+}
+
+void ASandLunarWorldActor::Tick(const float DeltaSeconds)
+{
+    Super::Tick(DeltaSeconds);
+    if (!SandSurface.IsValid())
+    {
+        for (TActorIterator<ASandCollapseSurfacePreviewActor> It(GetWorld()); It; ++It)
+        {
+            SandSurface = *It;
+            break;
+        }
+    }
+    if (!SandSurface.IsValid())
+    {
+        return;
+    }
+    const bool bRockTest = FParse::Param(FCommandLine::Get(),TEXT("SandRockTest"));
+    RockTestElapsedSeconds += DeltaSeconds;
+    for (int32 Index = 0; Index < DynamicRocks.Num(); ++Index)
+    {
+        UProceduralMeshComponent* Rock = DynamicRocks[Index];
+        if (Rock == nullptr || !Rock->IsSimulatingPhysics())
+        {
+            continue;
+        }
+        float SurfaceHeightCentimeters = 0.0f;
+        const FVector Location = Rock->GetComponentLocation();
+        const bool bHasParticleSurface = SandSurface->SampleSandSurfaceHeightCentimeters(
+            FVector2D(Location.X,Location.Y),DynamicRockSupportRadiiCentimeters[Index],
+            SurfaceHeightCentimeters);
+        if (!bHasParticleSurface)
+        {
+            const USandLevelSettings* Settings = GetDefault<USandLevelSettings>();
+            const FVector2f PositionMeters(Location.X / 100.0f,Location.Y / 100.0f);
+            if (FMath::Max(FMath::Abs(PositionMeters.X),FMath::Abs(PositionMeters.Y)) >=
+                0.5f * Settings->ActiveWidthMeters)
+            {
+                continue;
+            }
+            // During the first asynchronous density readback, hold rocks on
+            // the same analytic surface used to seed the particles. As soon as
+            // particle heights arrive this fallback relinquishes control.
+            SurfaceHeightCentimeters = 100.0f * Sand::Lunar::ActiveSurfaceHeightMeters(
+                PositionMeters.X,PositionMeters.Y,Settings->SandDepthMeters,
+                Settings->ActiveWidthMeters);
+        }
+        const float HalfHeight = DynamicRockHalfHeightsCentimeters[Index];
+        const float Bottom = Location.Z - HalfHeight;
+        const float TargetBottom = SurfaceHeightCentimeters - 0.24f * HalfHeight;
+        const float ContactAlpha = FMath::Clamp(
+            (SurfaceHeightCentimeters + 1.5f - Bottom) / 2.5f,0.0f,1.0f);
+        if (ContactAlpha <= 0.0f)
+        {
+            continue;
+        }
+        const float Mass = Rock->GetMass();
+        const FVector Velocity = Rock->GetPhysicsLinearVelocity();
+        const float Compression = FMath::Max(0.0f,TargetBottom - Bottom);
+        const float Weight = Mass * 980.0f;
+        const float SpringForce = Mass * 72.0f * Compression;
+        const float DampingForce = Mass * 7.5f * Velocity.Z;
+        const float UpwardForce = FMath::Clamp(
+            ContactAlpha * Weight + SpringForce - DampingForce,0.0f,4.0f * Weight);
+        Rock->AddForce(FVector::UpVector * UpwardForce,NAME_None,false);
+
+        const float EmbeddedFraction = FMath::Clamp(
+            (SurfaceHeightCentimeters - Bottom) / FMath::Max(2.0f * HalfHeight,1.0f),0.0f,1.0f);
+        const FVector HorizontalVelocity(Velocity.X,Velocity.Y,0.0f);
+        Rock->AddForce(-HorizontalVelocity * Mass *
+            FMath::Lerp(0.8f,4.5f,EmbeddedFraction),NAME_None,false);
+
+        if (bRockTest && Index == 0)
+        {
+            if (!bRockTestImpulseApplied && RockTestElapsedSeconds >= 1.0f)
+            {
+                Rock->AddImpulse(FVector(3800.0f,900.0f,0.0f),NAME_None,false);
+                bRockTestImpulseApplied = true;
+                UE_LOG(LogTemp,Display,TEXT("ROCK_TEST impulseApplied massKg=%.2f"),Mass);
+            }
+            const int32 WholeSecond = FMath::FloorToInt(RockTestElapsedSeconds);
+            if (WholeSecond > FMath::FloorToInt(RockTestLastLogSeconds))
+            {
+                RockTestLastLogSeconds = RockTestElapsedSeconds;
+                UE_LOG(LogTemp,Display,
+                    TEXT("ROCK_TEST t=%.1f positionCm=(%.1f,%.1f,%.1f) velocityCmS=(%.1f,%.1f,%.1f) bottomMinusSurfaceCm=%.2f"),
+                    RockTestElapsedSeconds,Location.X,Location.Y,Location.Z,
+                    Velocity.X,Velocity.Y,Velocity.Z,Bottom-SurfaceHeightCentimeters);
+            }
+        }
     }
 }
 

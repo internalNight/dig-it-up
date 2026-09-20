@@ -316,7 +316,8 @@ void PolygonizeTetrahedron(
 
 FSurfaceMeshData BuildSurfaceMesh(
     const TArray<uint32>& FixedDensity,
-    const FDensityFieldDescription& Field)
+    const FDensityFieldDescription& Field,
+    const bool bCullLunarBoundary = false)
 {
     const TArray<uint32> SmoothedDensity = SmoothDensityField(FixedDensity, Field);
     UE::Geometry::FMarchingCubes MarchingCubes;
@@ -376,6 +377,23 @@ FSurfaceMeshData BuildSurfaceMesh(
     Mesh.Indices.Reserve(MarchingCubes.Triangles.Num() * 3);
     for (const UE::Geometry::FIndex3i& Triangle : MarchingCubes.Triangles)
     {
+        if (bCullLunarBoundary)
+        {
+            const FVector Centroid = (
+                Mesh.Vertices[Triangle.A] + Mesh.Vertices[Triangle.B] + Mesh.Vertices[Triangle.C]) / 3.0f;
+            // The MPM field is necessarily finite, but its vertical closure is
+            // not part of the lunar surface. The transition terrain overlaps
+            // the last 0.8 m, so omit that closure (and its black silhouette)
+            // while retaining the entire playable interior.
+            const float VisibleHalfExtentCentimeters = 100.0f * (
+                0.5f * FMath::Min(MaximumMeters.X - Field.MinimumMeters.X,
+                    MaximumMeters.Y - Field.MinimumMeters.Y) - 0.90f);
+            if (FMath::Max(FMath::Abs(Centroid.X), FMath::Abs(Centroid.Y)) >
+                VisibleHalfExtentCentimeters)
+            {
+                continue;
+            }
+        }
         int32 B = Triangle.B;
         int32 C = Triangle.C;
         const FVector GeometricNormal = FVector::CrossProduct(
@@ -537,11 +555,18 @@ bool ASandSurfacePreviewActor::GenerateSurfaceFromParticlePositions(
         Particles.Add({ FVector4f(Position, ParticleDensityWeight) });
     }
     const int32 ParticleCount = Particles.Num();
+    const bool bCullLunarBoundary = FParse::Param(FCommandLine::Get(), TEXT("SandExcavator")) &&
+        !FParse::Param(FCommandLine::Get(), TEXT("SandLegacyBox")) &&
+        !FParse::Param(FCommandLine::Get(), TEXT("SandVictoryTest")) &&
+        !FParse::Param(FCommandLine::Get(), TEXT("SandBoundaryTest")) &&
+        !FParse::Param(FCommandLine::Get(), TEXT("SandBoomRaiseTest")) &&
+        !FParse::Param(FCommandLine::Get(), TEXT("SandSlopeCoastTest"));
     const double RequestStartSeconds = FPlatformTime::Seconds();
     TWeakObjectPtr<ASandSurfacePreviewActor> WeakThis(this);
 
     ENQUEUE_RENDER_COMMAND(SandBuildPreviewDensity)(
-        [WeakThis, ThisGeneration, Particles = MoveTemp(Particles), ParticleCount, Field, RequestStartSeconds](
+        [WeakThis, ThisGeneration, Particles = MoveTemp(Particles), ParticleCount, Field,
+            RequestStartSeconds, bCullLunarBoundary](
             FRHICommandListImmediate& RHICmdList) mutable
         {
             const double DensityStartSeconds = FPlatformTime::Seconds();
@@ -572,10 +597,11 @@ bool ASandSurfacePreviewActor::GenerateSurfaceFromParticlePositions(
 
             Async(EAsyncExecution::ThreadPool,
                 [WeakThis, ThisGeneration, FixedDensity = MoveTemp(FixedDensity), ParticleCount, Field,
-                    RequestStartSeconds, DensitySeconds]() mutable
+                    RequestStartSeconds, DensitySeconds, bCullLunarBoundary]() mutable
                 {
                     const double MeshStartSeconds = FPlatformTime::Seconds();
-                    FSurfaceMeshData Mesh = BuildSurfaceMesh(FixedDensity, Field);
+                    FSurfaceMeshData Mesh = BuildSurfaceMesh(
+                        FixedDensity, Field, bCullLunarBoundary);
                     const double MeshSeconds = FPlatformTime::Seconds() - MeshStartSeconds;
                     AsyncTask(ENamedThreads::GameThread,
                         [WeakThis, ThisGeneration, Mesh = MoveTemp(Mesh), ParticleCount, Field,
