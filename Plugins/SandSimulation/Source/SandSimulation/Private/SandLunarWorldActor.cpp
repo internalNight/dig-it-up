@@ -7,6 +7,7 @@
 #include "Components/SceneComponent.h"
 #include "Engine/CollisionProfile.h"
 #include "EngineUtils.h"
+#include "HAL/PlatformTime.h"
 #include "Materials/MaterialInterface.h"
 #include "Misc/AutomationTest.h"
 #include "Misc/CommandLine.h"
@@ -246,8 +247,14 @@ ASandLunarWorldActor::ASandLunarWorldActor()
     DistantTerrain->SetCastShadow(false);
     TransitionTerrain = CreateDefaultSubobject<UProceduralMeshComponent>(TEXT("TransitionTerrain"));
     TransitionTerrain->SetupAttachment(SceneRoot);
+    // The analytic collar sits just below the live granular top.  The live
+    // top now reaches the resident edge while only its closure walls are
+    // culled, so this underlay cannot create an inner square intersection.
     TransitionTerrain->SetRelativeLocation(FVector(0.0f,0.0f,-1.0f));
-    TransitionTerrain->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
+    // The vehicle and tools always remain inside the following physical MPM
+    // window. Collision on this visual collar only forced a 40k-triangle Chaos
+    // recook at every shift and was a major hitch source.
+    TransitionTerrain->SetCollisionEnabled(ECollisionEnabled::NoCollision);
     TransitionTerrain->SetCastShadow(false);
     CachedDeformationTerrain = CreateDefaultSubobject<UProceduralMeshComponent>(
         TEXT("CachedDeformationTerrain"));
@@ -408,6 +415,7 @@ void ASandLunarWorldActor::BuildDistantTerrain()
 
 void ASandLunarWorldActor::BuildTransitionTerrain()
 {
+    const double BuildStartSeconds = FPlatformTime::Seconds();
     const USandLevelSettings* Settings = GetDefault<USandLevelSettings>();
     const float BaseDepth = Settings->SandDepthMeters;
     const float ActiveWidth = Settings->LunarPlayableWidthMeters;
@@ -426,13 +434,19 @@ void ASandLunarWorldActor::BuildTransitionTerrain()
             Key.Y >= MinimumActiveKey.Y &&
             Key.Y < MinimumActiveKey.Y + ResidentChunkCount;
     };
-    // Extend under the macro mesh by one near-terrain cell. The component sits
-    // 1 cm lower, so the outer open edge is hidden without z-fighting.
-    constexpr float HalfRing = 72.0f;
-    constexpr float Step = 1.0f;
+    // A 2.5 m visual grid is sufficient outside the live 15 m MPM patch and
+    // aligns exactly with the 5 m persistence chunks.  The former 1 m rebuild
+    // generated about 41k triangles and cost roughly 95 ms on every shift.
+    // This collar stays under the macro mesh at its outer edge while reducing
+    // the streamed rebuild to about 5.8k triangles.
+    constexpr float HalfRing = 67.5f;
+    constexpr float Step = 2.5f;
     // Slight overlap hides the independent marching-cubes edge without
     // covering the playable top surface.
-    const float HoleHalf = 0.5f * ResidentWidth - 1.00f;
+    // A broad analytic-under-live overlap stays closed on steep slopes and at
+    // oblique camera angles. The machine is always within 2.5 m of the window
+    // centre, so this 2.75 m collar never covers the working bucket region.
+    const float HoleHalf = 0.5f * ResidentWidth - 2.75f;
     FMeshSectionData Ring;
     for (float Y = -HalfRing; Y < HalfRing - 0.1f; Y += Step)
     {
@@ -452,9 +466,12 @@ void ASandLunarWorldActor::BuildTransitionTerrain()
                 ChunkOrigin + ChunkKey.X * ChunkWidth);
             const float LocalY = Center.Y - (
                 ChunkOrigin + ChunkKey.Y * ChunkWidth);
-            const bool bFullyInsideChunk = LocalX > 0.5f * Step &&
-                LocalX < ChunkWidth - 0.5f * Step &&
-                LocalY > 0.5f * Step && LocalY < ChunkWidth - 0.5f * Step;
+            constexpr float ChunkAlignmentTolerance = 0.01f;
+            const bool bFullyInsideChunk =
+                LocalX >= 0.5f * Step - ChunkAlignmentTolerance &&
+                LocalX <= ChunkWidth - 0.5f * Step + ChunkAlignmentTolerance &&
+                LocalY >= 0.5f * Step - ChunkAlignmentTolerance &&
+                LocalY <= ChunkWidth - 0.5f * Step + ChunkAlignmentTolerance;
             if (!IsActiveKey(ChunkKey) && bFullyInsideChunk &&
                 CachedDeformationHeights.Contains(ChunkKey))
             {
@@ -464,11 +481,16 @@ void ASandLunarWorldActor::BuildTransitionTerrain()
                 FLinearColor(0.23f,0.24f,0.26f),bOverviewMode);
         }
     }
-    UploadSection(TransitionTerrain, 0, MoveTemp(Ring), true);
+    const int32 TriangleCount = Ring.Indices.Num()/3;
+    UploadSection(TransitionTerrain,0,MoveTemp(Ring),false);
+    UE_LOG(LogTemp,Verbose,
+        TEXT("LUNAR_TRANSITION_BUILD triangles=%d collision=0 cpuMs=%.2f"),
+        TriangleCount,1000.0*(FPlatformTime::Seconds()-BuildStartSeconds));
 }
 
 void ASandLunarWorldActor::BuildCachedDeformationTerrain()
 {
+    const double BuildStartSeconds = FPlatformTime::Seconds();
     if (CachedDeformationResolution < 2 || CachedDeformationSpacingMeters <= 0.0f)
     {
         CachedDeformationTerrain->ClearMeshSection(0);
@@ -501,8 +523,9 @@ void ASandLunarWorldActor::BuildCachedDeformationTerrain()
     const int32 TriangleCount = Deformation.Indices.Num() / 3;
     UploadSection(CachedDeformationTerrain,0,MoveTemp(Deformation),false);
     UE_LOG(LogTemp,Display,
-        TEXT("LUNAR_TRACE_PROXY storedChunks=%d visibleChunks=%d triangles=%d"),
-        CachedDeformationHeights.Num(),VisibleChunkCount,TriangleCount);
+        TEXT("LUNAR_TRACE_PROXY storedChunks=%d visibleChunks=%d triangles=%d cpuMs=%.2f"),
+        CachedDeformationHeights.Num(),VisibleChunkCount,TriangleCount,
+        1000.0*(FPlatformTime::Seconds()-BuildStartSeconds));
 }
 
 void ASandLunarWorldActor::BuildRocks()

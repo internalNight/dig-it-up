@@ -384,20 +384,24 @@ FSurfaceMeshData BuildSurfaceMesh(
         {
             const FVector Centroid = (
                 Mesh.Vertices[Triangle.A] + Mesh.Vertices[Triangle.B] + Mesh.Vertices[Triangle.C]) / 3.0f;
-            // The MPM field is necessarily finite, but its closure and last
-            // metre are covered by the transition terrain. Remove the
-            // whole overlap strip so neither the side wall nor a nearly-flat
-            // bevel can reveal the square resident-window boundary.
-            const float VisibleHalfExtentCentimeters = 100.0f * (
+            // Keep the upward-facing granular top all the way to the resident
+            // field edge.  Only discard the marching-cubes closure/bevel in
+            // the outer strip; cutting every triangle at an inner square made
+            // that artificial cut itself visible as a black line.
+            const float ClosureStripStartCentimeters = 100.0f * (
                 0.5f * FMath::Min(MaximumMeters.X - Field.MinimumMeters.X,
-                    MaximumMeters.Y - Field.MinimumMeters.Y) - 1.10f);
+                    MaximumMeters.Y - Field.MinimumMeters.Y) - 0.70f);
             const FVector2D FieldCenterCentimeters(
                 50.0f * (MaximumMeters.X + Field.MinimumMeters.X),
                 50.0f * (MaximumMeters.Y + Field.MinimumMeters.Y));
             const float EdgeDistance = FMath::Max(
                 FMath::Abs(Centroid.X - FieldCenterCentimeters.X),
                 FMath::Abs(Centroid.Y - FieldCenterCentimeters.Y));
-            if (EdgeDistance > VisibleHalfExtentCentimeters)
+            const FVector AverageOutwardNormal = (
+                Mesh.Normals[Triangle.A] + Mesh.Normals[Triangle.B] +
+                Mesh.Normals[Triangle.C]).GetSafeNormal();
+            if (EdgeDistance > ClosureStripStartCentimeters &&
+                AverageOutwardNormal.Z < 0.55f)
             {
                 continue;
             }

@@ -274,6 +274,12 @@ void ASandExcavatorPawn::BeginPlay()
         CameraBoom->TargetArmLength = bLunarOverview ? 120000.0f : 520.0f;
         CameraBoom->SetRelativeRotation(bLunarOverview
             ? FRotator(-18.0f,-48.0f,0.0f) : FRotator(-17.0f,-58.0f,0.0f));
+        if (FParse::Param(FCommandLine::Get(),TEXT("SandSkyVisualTest")))
+        {
+            // Capture-only composition used to inspect the horizon and sky.
+            // Normal play still starts at the excavation-focused pitch above.
+            CameraBoom->SetRelativeRotation(FRotator(-3.0f,-58.0f,0.0f));
+        }
         CameraBoom->bDoCollisionTest = !bLunarOverview;
         FollowCamera->FieldOfView = bLunarOverview ? 70.0f : 60.0f;
         FollowCamera->PostProcessBlendWeight = 1.0f;

@@ -26,6 +26,7 @@
 #include "SandFloorExposure.h"
 #include "SandLunarTerrain.h"
 #include "SandLunarGemActor.h"
+#include "SandLunarSkyActor.h"
 #include "SandLunarWorldActor.h"
 #include "HAL/PlatformTime.h"
 #include "Misc/CommandLine.h"
@@ -231,6 +232,16 @@ void ASandPreviewGameMode::BeginPlay()
         Cast<UDirectionalLightComponent>(Sun->GetLightComponent()))
     {
         SunComponent->SetAtmosphereSunLight(!bLunarWorld);
+    }
+    if (bLunarWorld)
+    {
+        if (ASandLunarSkyActor* LunarSky = World->SpawnActor<ASandLunarSkyActor>(
+            FVector::ZeroVector,FRotator::ZeroRotator))
+        {
+            // A directional light points along the arriving rays; the visible
+            // solar disc lies in the opposite sky direction.
+            LunarSky->Configure(-Sun->GetActorForwardVector());
+        }
     }
 
     // The lightweight Entry map has no authored environment. Spawn a real

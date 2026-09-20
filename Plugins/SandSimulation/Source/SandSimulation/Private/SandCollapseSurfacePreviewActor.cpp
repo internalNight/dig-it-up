@@ -488,6 +488,8 @@ void ASandCollapseSurfacePreviewActor::Tick(const float DeltaSeconds)
     }
 
     const float FixedFrameSeconds = Sand::MPM::CouplingStepSeconds();
+    const bool bExpandedLunarPatch =
+        SimulationState->PhysicalMaximum.X - SimulationState->PhysicalMinimum.X > 8.0f;
     // A mobile GPU job can span multiple render frames. Count that wall time
     // even while the previous step is in flight; otherwise the sand runs in
     // slow motion despite a responsive camera and touch interface.
@@ -504,7 +506,8 @@ void ASandCollapseSurfacePreviewActor::Tick(const float DeltaSeconds)
     }
     const uint32 FramesToAdvance = static_cast<uint32>(FMath::Clamp(
         FMath::FloorToInt(SimulationAccumulatorSeconds / FixedFrameSeconds), 1,
-            Cast<ASandRoadheaderPawn>(Excavator.Get()) || FParse::Param(FCommandLine::Get(),TEXT("SandRoadheaderBench")) ? 1 : 2));
+            Cast<ASandRoadheaderPawn>(Excavator.Get()) || bExpandedLunarPatch ||
+            FParse::Param(FCommandLine::Get(),TEXT("SandRoadheaderBench")) ? 1 : 2));
     SimulationAccumulatorSeconds -= FramesToAdvance * FixedFrameSeconds;
     bSimulationStepInFlight = true;
 
@@ -630,8 +633,6 @@ void ASandCollapseSurfacePreviewActor::Tick(const float DeltaSeconds)
     // previous GPU density readback, CPU extraction and upload complete.
     // Slow devices naturally skip busy frames without paying for a particle
     // readback whose data would otherwise be discarded.
-    const bool bExpandedLunarPatch =
-        SimulationState->PhysicalMaximum.X - SimulationState->PhysicalMinimum.X > 8.0f;
     const uint32 SurfaceStride = SimulationState->CellSize >= 0.099f
         ? 1u : (bExpandedLunarPatch ? 2u :
             static_cast<uint32>(FMath::RoundToInt(0.1f / FixedFrameSeconds)));

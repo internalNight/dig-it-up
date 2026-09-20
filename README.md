@@ -10,6 +10,9 @@ impact craters and scattered rocks. The objective is now a **22 cm faceted golde
 specimen**, randomly buried 30 cm below the local surface. Press **V** to show its
 bearing for five seconds, travel across the field, then excavate it. Double-click
 `PlayLunarWorld.cmd` to run it, or use `-SandLegacyBox` for the earlier box scene.
+The airless sky includes a low, nearly fixed Earth at its lunar-surface angular
+size, a half-degree Sun, a deliberately exposure-assisted Milky Way star field
+and a slowly orbiting survey satellite.
 
 The large landscape uses measured relief from the LROC `NAC_DTM_NOBILE03`
 product plus clearly documented designed features. It is not presented as one
@@ -123,6 +126,8 @@ functional transport does not establish real-machine performance.
 - Windows PC, DX12 and Shader Model 6
 - One 100 m x 100 m driveable field with a following 15 m x 15 m GPU-MPM window
 - A 2.048 km detailed context plus a non-colliding 8.192 km horizon ring
+- Camera-following celestial sky with 1.90 degree Earth, 0.53 degree Sun,
+  exposure-assisted stars and a two-hour survey-orbiter path
 - Three-by-three five-metre chunks remain live; visited chunks preserve their full
   particle state and a visible frozen deformation proxy while GPU load stays local
 - No visible retaining walls in the lunar profile; the upper boundary remains open
@@ -130,6 +135,7 @@ functional transport does not establish real-machine performance.
 - 10 cm dense full-volume physics cells by default (about 265,000 points initially)
 - 12 cm independent surface-reconstruction voxels
 - 30 Hz outer physics, 240 Hz internal MPM steps, 60 FPS game target and 15 Hz asynchronous bulk-surface requests
+- One solver step per submitted lunar GPU job to avoid burst catch-up hitches
 - RTX 4070 Laptop 8 GB development target
 - Single player, one dry-sand material, no open world or networking
 

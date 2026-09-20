@@ -40,6 +40,20 @@ public:
     UPROPERTY(Config, EditAnywhere, Category="Lunar World", meta=(ClampMin="0", ClampMax="320"))
     int32 LunarRockCount = 140;
 
+    /** Mean apparent diameter derived from Earth diameter / mean lunar distance. */
+    UPROPERTY(Config, EditAnywhere, Category="Lunar Sky", meta=(ClampMin="1.7", ClampMax="2.1", Units="deg"))
+    float LunarEarthAngularDiameterDegrees = 1.90f;
+
+    UPROPERTY(Config, EditAnywhere, Category="Lunar Sky", meta=(ClampMin="0.48", ClampMax="0.58", Units="deg"))
+    float LunarSunAngularDiameterDegrees = 0.53f;
+
+    UPROPERTY(Config, EditAnywhere, Category="Lunar Sky", meta=(ClampMin="0", ClampMax="1600"))
+    int32 LunarStarCount = 1000;
+
+    /** Approximate low-lunar-orbit period; the visible model is enlarged for readability. */
+    UPROPERTY(Config, EditAnywhere, Category="Lunar Sky", meta=(ClampMin="3600", ClampMax="14400", Units="s"))
+    float LunarSatelliteOrbitPeriodSeconds = 7200.0f;
+
     /** Diameter of the buried faceted specimen; deliberately below half the bucket width. */
     UPROPERTY(Config, EditAnywhere, Category="Lunar Mission", meta=(ClampMin="0.08", ClampMax="0.32", Units="m"))
     float LunarGemDiameterMeters = 0.22f;

@@ -82,10 +82,11 @@ crater occur together at one surveyed coordinate.
 
 The macro terrain and its larger distant rocks are static visual context. The
 100 m field becomes interactive locally as the physics window follows the
-excavator; ten near-field rocks are independent rigid bodies. A 144 m transition
-terrain moves its opening with the resident window; finite marching-cubes side
-faces are culled relative to that moving window so the old square black rim and
-pool-wall appearance are not rendered.
+excavator; ten near-field rocks are independent rigid bodies. A 135 m transition
+terrain moves its opening with the resident window. Its 2.5 m grid aligns with
+the five-metre persistence chunks and costs about 5,800 triangles, while the live
+MPM top is retained to the resident edge and only its closure walls are culled.
+This removes the former inner square cut and its black grazing-angle seam.
 
 The normal camera is now lower and closer to keep the excavator and bucket work
 readable. Pressing **C** changes to an oblique 1.2 km regional view with black sky
@@ -125,6 +126,26 @@ rock placement. Near rocks use a charcoal procedural-noise material over an
 80-face irregular mesh instead of scaled spheres or ellipsoids. The lighting
 deliberately avoids Earth atmosphere and height fog.
 
+The celestial layer follows the camera, so Earth, the Sun and stars have no
+near-field parallax. Earth is rendered at **1.90 degrees**, derived from a
+12,742 km diameter and 384,400 km mean Earth-Moon distance; the Sun is **0.53
+degrees**. For this south-polar near-side composition Earth stays low and nearly
+fixed instead of rising and setting. Its phase, blue ocean, land and cloud/ice
+bands are generated procedurally. The survey orbiter follows a two-hour path,
+representative of a low lunar mapping orbit, but its model is enlarged so a
+player can actually notice it.
+
+The Milky Way band and individual stars are intentionally made visible through
+an exposure-assist material. A camera exposed strictly for the 75,000 lux sunlit
+ground would suppress most stars, as in the Apollo surface photographs. This is
+the principal artistic departure from a single physically correct exposure.
+Scientific scale references:
+
+- <https://science.nasa.gov/moon/facts/>
+- <https://www.jpl.nasa.gov/edu/pdfs/earth_moon_distance-worksheet.pdf>
+- <https://spacemath.gsfc.nasa.gov/Modules/8EOSS4.pdf>
+- <https://science.nasa.gov/blogs/earth-matters/2011/09/28/where-are-the-stars/>
+
 ## Measured runtime check
 
 The current 1,280 x 720 streaming acceptance run started with 265,483 particles,
@@ -142,6 +163,15 @@ and 18.32 ms of game-thread window preparation at the two commits. The earlier
 instant-teleport stress path, which deliberately bypasses the approach distance,
 still measured 27--32 ms for first-time chunks. This optimization reduces the
 normal driving hitch; it does not claim that arbitrary teleports are hitch-free.
+
+The latest seam/frame-pacing pass removed collision cooking from the moving
+transition mesh, reduced that mesh from about 41,000 to 5,800 triangles, and
+limited the expanded lunar solver to one step per submitted GPU job. On the same
+development machine, transition rebuild time fell from roughly **95 ms to
+13.4--13.5 ms**. Two paced boundary shifts measured **14.7 ms and 18.4 ms** of
+particle-window preparation; warmed solver/readback samples were **15.0--17.3
+ms**. These numbers exclude the one-time first-frame shader/runtime warm-up and
+are not a guarantee for other hardware.
 
 The separate regional-view capture rendered 54 FPS at capture after startup,
 held approximately 30/30 Hz sand time and showed the black airless sky without
