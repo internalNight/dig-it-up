@@ -266,11 +266,6 @@ ASandLunarWorldActor::ASandLunarWorldActor()
     // carry the large-scale shadow so a streamed proxy edge cannot flash a
     // square, physically implausible shadow during a window commit.
     CachedDeformationTerrain->SetCastShadow(false);
-    TrackMarks = CreateDefaultSubobject<UProceduralMeshComponent>(
-        TEXT("PersistentTrackMarks"));
-    TrackMarks->SetupAttachment(SceneRoot);
-    TrackMarks->SetCollisionEnabled(ECollisionEnabled::NoCollision);
-    TrackMarks->SetCastShadow(false);
     static ConstructorHelpers::FObjectFinder<UMaterialInterface> VertexColorMaterial(
         TEXT("/Engine/EngineDebugMaterials/VertexColorMaterial.VertexColorMaterial"));
     if (VertexColorMaterial.Succeeded())
@@ -290,7 +285,6 @@ ASandLunarWorldActor::ASandLunarWorldActor()
     DistantTerrain->SetMaterial(0,SharedTerrainMaterial);
     TransitionTerrain->SetMaterial(0,SharedTerrainMaterial);
     CachedDeformationTerrain->SetMaterial(0,SharedTerrainMaterial);
-    TrackMarks->SetMaterial(0,SharedTerrainMaterial);
 
     StaticRocks = CreateDefaultSubobject<UProceduralMeshComponent>(TEXT("StaticLunarRocks"));
     StaticRocks->SetupAttachment(SceneRoot);
@@ -350,6 +344,65 @@ void ASandLunarWorldActor::CacheDeformationChunk(
     const USandLevelSettings* Settings = GetDefault<USandLevelSettings>();
     constexpr float ChunkWidth = 5.0f;
     const float ChunkOrigin = -0.5f * Settings->ActiveWidthMeters;
+    TArray<float> Deltas;
+    Deltas.SetNumUninitialized(HeightMeters.Num());
+    for (int32 Y = 0; Y < Resolution; ++Y)
+    {
+        for (int32 X = 0; X < Resolution; ++X)
+        {
+            const int32 Index = X + Y * Resolution;
+            const float WorldX = ChunkOrigin + ChunkKey.X * ChunkWidth +
+                X * SpacingMeters;
+            const float WorldY = ChunkOrigin + ChunkKey.Y * ChunkWidth +
+                Y * SpacingMeters;
+            const float Reference = Sand::Lunar::ActiveSurfaceHeightMeters(
+                WorldX,WorldY,Settings->SandDepthMeters,
+                Settings->LunarPlayableWidthMeters);
+            const float RawDelta = FMath::IsFinite(HeightMeters[Index])
+                ? HeightMeters[Index] - Reference : 0.0f;
+            Deltas[Index] = FMath::Clamp(RawDelta,-0.12f,0.16f);
+        }
+    }
+    // A single bad upper-envelope sample turns two ten-centimetre triangles
+    // into an almost vertical grey plate. Clamp isolated samples toward their
+    // local median while retaining broad pits, piles and track depressions.
+    TArray<float> FilteredDeltas = Deltas;
+    for (int32 Y = 0; Y < Resolution; ++Y)
+    {
+        for (int32 X = 0; X < Resolution; ++X)
+        {
+            TArray<float,TInlineAllocator<9>> Neighborhood;
+            for (int32 OffsetY = -1; OffsetY <= 1; ++OffsetY)
+            {
+                for (int32 OffsetX = -1; OffsetX <= 1; ++OffsetX)
+                {
+                    const int32 SampleX = FMath::Clamp(X + OffsetX,0,Resolution - 1);
+                    const int32 SampleY = FMath::Clamp(Y + OffsetY,0,Resolution - 1);
+                    Neighborhood.Add(Deltas[SampleX + SampleY * Resolution]);
+                }
+            }
+            Neighborhood.Sort();
+            const float Median = Neighborhood[Neighborhood.Num() / 2];
+            const int32 Index = X + Y * Resolution;
+            FilteredDeltas[Index] = FMath::Clamp(
+                Deltas[Index],Median - 0.045f,Median + 0.045f);
+        }
+    }
+    const float MinimumX = ChunkOrigin + ChunkKey.X * ChunkWidth;
+    const float MinimumY = ChunkOrigin + ChunkKey.Y * ChunkWidth;
+    TArray<FVector2f> LocalTrackHistory;
+    LocalTrackHistory.Reserve(TrackHistoryMeters.Num());
+    constexpr float TrackSearchMargin = 0.20f;
+    for (const FVector2f Point : TrackHistoryMeters)
+    {
+        if (Point.X >= MinimumX - TrackSearchMargin &&
+            Point.X <= MinimumX + ChunkWidth + TrackSearchMargin &&
+            Point.Y >= MinimumY - TrackSearchMargin &&
+            Point.Y <= MinimumY + ChunkWidth + TrackSearchMargin)
+        {
+            LocalTrackHistory.Add(Point);
+        }
+    }
     float MinimumDelta = TNumericLimits<float>::Max();
     float MaximumDelta = -TNumericLimits<float>::Max();
     int32 DepressedSampleCount = 0;
@@ -364,7 +417,36 @@ void ASandLunarWorldActor::CacheDeformationChunk(
             const float Reference = Sand::Lunar::ActiveSurfaceHeightMeters(
                 WorldX,WorldY,Settings->SandDepthMeters,
                 Settings->LunarPlayableWidthMeters);
-            const float Delta = HeightMeters[X + Y * Resolution] - Reference;
+            const int32 Index = X + Y * Resolution;
+            // Force every cached chunk back to the same analytical surface at
+            // its border. The five-sample feather is covered by the permanent
+            // preview, eliminating cracks between cached and uncached terrain.
+            const int32 EdgeSamples = FMath::Min(
+                FMath::Min(X,Resolution - 1 - X),
+                FMath::Min(Y,Resolution - 1 - Y));
+            const float EdgeWeight = FMath::Clamp(EdgeSamples / 5.0f,0.0f,1.0f);
+            float Delta = FilteredDeltas[Index] * EdgeWeight;
+            // Record the actual driven path in the frozen heightfield instead
+            // of laying opaque cards above the terrain. This shallow stamp is
+            // visual history only; the cached particles remain authoritative.
+            constexpr float TrackRadiusMeters = 0.16f;
+            constexpr float TrackDepthMeters = 0.018f;
+            float TrackDelta = TNumericLimits<float>::Max();
+            for (const FVector2f TrackPoint : LocalTrackHistory)
+            {
+                const float Distance = FVector2f::Distance(
+                    FVector2f(WorldX,WorldY),TrackPoint);
+                if (Distance < TrackRadiusMeters)
+                {
+                    TrackDelta = FMath::Min(TrackDelta,
+                        -TrackDepthMeters * (1.0f - Distance / TrackRadiusMeters));
+                }
+            }
+            if (TrackDelta < TNumericLimits<float>::Max() * 0.5f)
+            {
+                Delta = FMath::Min(Delta,TrackDelta * EdgeWeight);
+            }
+            HeightMeters[Index] = Reference + Delta;
             MinimumDelta = FMath::Min(MinimumDelta,Delta);
             MaximumDelta = FMath::Max(MaximumDelta,Delta);
             DepressedSampleCount += Delta < -0.005f ? 1 : 0;
@@ -534,7 +616,7 @@ void ASandLunarWorldActor::UpdateTransitionVisibility()
     const double UpdateStartSeconds = FPlatformTime::Seconds();
     const USandLevelSettings* Settings = GetDefault<USandLevelSettings>();
     constexpr float ChunkWidth = 5.0f;
-    constexpr float CachedOverlap = 0.28f;
+    constexpr float CachedInset = 0.20f;
     const float ChunkOrigin = -0.5f * Settings->ActiveWidthMeters;
     // Keep one metre of the analytic preview beneath the live MPM boundary.
     // The overlap prevents a grazing-angle crack without hiding the working
@@ -565,10 +647,13 @@ void ASandLunarWorldActor::UpdateTransitionVisibility()
                     }
                     const float MinimumX = ChunkOrigin + Key.X * ChunkWidth;
                     const float MinimumY = ChunkOrigin + Key.Y * ChunkWidth;
-                    bHide = Point.X >= MinimumX - CachedOverlap &&
-                        Point.X <= MinimumX + ChunkWidth + CachedOverlap &&
-                        Point.Y >= MinimumY - CachedOverlap &&
-                        Point.Y <= MinimumY + ChunkWidth + CachedOverlap;
+                    // Hide only the interior of a cached proxy. Its feathered
+                    // outer band overlaps the analytical preview, so there is
+                    // always terrain behind the handoff instead of a black gap.
+                    bHide = Point.X > MinimumX + CachedInset &&
+                        Point.X < MinimumX + ChunkWidth - CachedInset &&
+                        Point.Y > MinimumY + CachedInset &&
+                        Point.Y < MinimumY + ChunkWidth - CachedInset;
                 }
             }
         }
@@ -752,28 +837,8 @@ void ASandLunarWorldActor::UpdateTrackMarks()
     {
         return;
     }
-    const auto GroundMark = [this](const UBoxComponent* Track)
-    {
-        const FTransform Transform = Track->GetComponentTransform();
-        FVector Mark = Transform.GetLocation();
-        float SurfaceHeightCentimeters = 0.0f;
-        if (SandSurface.IsValid() &&
-            SandSurface->SampleSandSurfaceHeightCentimeters(
-                FVector2D(Mark.X,Mark.Y),6.0f,SurfaceHeightCentimeters))
-        {
-            Mark.Z = SurfaceHeightCentimeters + 1.2f;
-        }
-        else
-        {
-            const USandLevelSettings* Settings = GetDefault<USandLevelSettings>();
-            Mark.Z = 100.0f * Sand::Lunar::ActiveSurfaceHeightMeters(
-                Mark.X / 100.0f,Mark.Y / 100.0f,Settings->SandDepthMeters,
-                Settings->LunarPlayableWidthMeters) + 1.2f;
-        }
-        return Mark;
-    };
-    const FVector Left = GroundMark(Excavator->LeftTrackCollider);
-    const FVector Right = GroundMark(Excavator->RightTrackCollider);
+    const FVector Left = Excavator->LeftTrackCollider->GetComponentLocation();
+    const FVector Right = Excavator->RightTrackCollider->GetComponentLocation();
     if (!bHasPreviousTrackMark)
     {
         PreviousLeftTrackMark = Left;
@@ -795,51 +860,16 @@ void ASandLunarWorldActor::UpdateTrackMarks()
     {
         return;
     }
-    const int32 SegmentIndex = TrackMarkIndices.Num() / 12;
-    // Compacted regolith should remain readable without becoming a black
-    // graphic line at grazing angles. The mark is only moderately darker than
-    // the 0.23/0.24/0.26 terrain and does not cast its own shadow.
-    const FLinearColor DisturbedRegolith = SegmentIndex % 3 == 0
-        ? FLinearColor(0.12f,0.125f,0.135f,1.0f)
-        : FLinearColor(0.145f,0.150f,0.160f,1.0f);
-    const auto AddStrip = [this,&DisturbedRegolith](
-        const FVector Previous,const FVector Current)
-    {
-        FVector Direction = Current - Previous;
-        Direction.Z = 0.0f;
-        if (!Direction.Normalize())
-        {
-            return;
-        }
-        constexpr float HalfWidthCentimeters = 4.8f;
-        const FVector Side = FVector::CrossProduct(FVector::UpVector,Direction) *
-            HalfWidthCentimeters;
-        const int32 First = TrackMarkVertices.Num();
-        TrackMarkVertices.Append({
-            Previous - Side,Previous + Side,Current + Side,Current - Side});
-        TrackMarkNormals.Append({
-            FVector::UpVector,FVector::UpVector,FVector::UpVector,FVector::UpVector});
-        TrackMarkUVs.Append({
-            FVector2D(0.0f,0.0f),FVector2D(1.0f,0.0f),
-            FVector2D(1.0f,1.0f),FVector2D(0.0f,1.0f)});
-        TrackMarkColors.Append({
-            DisturbedRegolith,DisturbedRegolith,
-            DisturbedRegolith,DisturbedRegolith});
-        TrackMarkIndices.Append({
-            First,First + 2,First + 1,First,First + 3,First + 2});
-    };
-    AddStrip(PreviousLeftTrackMark,Left);
-    AddStrip(PreviousRightTrackMark,Right);
+    TrackHistoryMeters.Add(FVector2f(Left.X,Left.Y) / 100.0f);
+    TrackHistoryMeters.Add(FVector2f(Right.X,Right.Y) / 100.0f);
     PreviousLeftTrackMark = Left;
     PreviousRightTrackMark = Right;
-    TrackMarks->CreateMeshSection_LinearColor(
-        0,TrackMarkVertices,TrackMarkIndices,TrackMarkNormals,TrackMarkUVs,
-        TrackMarkColors,TArray<FProcMeshTangent>(),false,false);
-    if (SegmentIndex == 0 || SegmentIndex % 100 == 0)
+    const int32 SegmentCount = TrackHistoryMeters.Num() / 2;
+    if (SegmentCount == 1 || SegmentCount % 100 == 0)
     {
         UE_LOG(LogTemp,Display,
-            TEXT("LUNAR_TRACK_HISTORY segments=%d vertices=%d persistent=1"),
-            SegmentIndex + 1,TrackMarkVertices.Num());
+            TEXT("LUNAR_TRACK_HISTORY segments=%d samples=%d persistentHeightStamp=1"),
+            SegmentCount,TrackHistoryMeters.Num());
     }
 }
 

@@ -20,8 +20,8 @@ literal surveyed site. Only the local window is solved on the GPU at one time;
 five-metre chunks follow the excavator, preserve their full particle state for the
 session and leave a lightweight frozen deformation surface outside the live
 window. A once-built 0.5 m visual mesh keeps the complete 100 m field and its
-craters visible at long range, while a persistent two-track disturbance strip
-records the driven route across window changes. See
+craters visible at long range, while actual track samples stamp shallow grooves
+into frozen chunk heightfields across window changes without overlay geometry. See
 [source, architecture and limitations](Docs/LunarWorld.md).
 
 ## Android excavator first playable

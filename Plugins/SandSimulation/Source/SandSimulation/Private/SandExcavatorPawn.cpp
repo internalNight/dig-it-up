@@ -468,9 +468,18 @@ void ASandExcavatorPawn::Tick(const float DeltaSeconds)
     }
     else if (bDriveTraceTest)
     {
-        // Long, steady traverse used to verify that the vehicle advances,
-        // resident windows migrate, and the departed track remains visible.
+        // Long S-shaped traverse used to verify that the vehicle advances,
+        // resident windows migrate, and both straight and turning track
+        // histories remain visible without detached proxy triangles.
         Throttle = ElapsedSimulationSeconds < 22.0f ? 0.72f : 0.0f;
+        if (ElapsedSimulationSeconds >= 10.0f && ElapsedSimulationSeconds < 14.0f)
+        {
+            Steering = 0.28f;
+        }
+        else if (ElapsedSimulationSeconds >= 14.0f && ElapsedSimulationSeconds < 18.0f)
+        {
+            Steering = -0.28f;
+        }
         bBrake = ElapsedSimulationSeconds >= 22.0f;
     }
     else if (bBoundaryTest)

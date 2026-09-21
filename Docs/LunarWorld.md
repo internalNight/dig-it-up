@@ -46,12 +46,13 @@ separating the scene into two computational scales.
   initialization over several frames. Only the three departing chunks are
   converted to frozen heightfields on a one-axis shift, instead of rebuilding
   all nine resident chunks.
-- A separate path-driven disturbance mesh records both track trajectories every
-  12 cm of travel. It is independent of the active MPM window, remains for the
-  whole session and follows the sampled sand surface, so the travelled route does
-  not disappear when a chunk becomes inactive. The full cached particle state
-  remains the authoritative physical history; this strip is a persistent visual
-  record, not a replacement for the MPM simulation.
+- Both track trajectories are sampled every 12 cm of actual travel. When a chunk
+  becomes inactive, those samples stamp a shallow pair of grooves into its frozen
+  heightfield; no separate cards, ribbons or decals are placed above the terrain.
+  The route therefore remains visible without floating grey fragments or a black
+  line at grazing angles. The full cached particle state remains the authoritative
+  physical history; the groove stamp is only a persistent visual record of the
+  route actually driven.
 - Historical deformation proxies no longer cast their own streamed chunk shadows.
   The continuous macro terrain carries the large-scale shadow, avoiding a square
   or delayed shadow flash while the proxy geometry changes; local rocks, machine
@@ -98,7 +99,10 @@ startup, so craters, channels and relief are visible from a distance before the
 physics window reaches them. Window commits update only vertex alpha around the
 live and cached surfaces; they do not rebuild or replace terrain geometry. A
 one-metre overlap under the live edge and a common masked regolith material
-remove the former black rectangular cut and grazing-angle shading seam.
+remove the former black rectangular cut and grazing-angle shading seam. Frozen
+chunk heights are median-limited to reject isolated reconstruction spikes and
+feather back to the analytical surface over their outer five samples. The
+preview is hidden only inside that feather, leaving terrain behind every handoff.
 
 The normal camera is now lower and closer to keep the excavator and bucket work
 readable. Pressing **C** changes to an oblique 1.2 km regional view with black sky
@@ -160,14 +164,14 @@ Scientific scale references:
 
 ## Measured runtime check
 
-The latest 1,280 x 720 drive acceptance run started with 265,483 particles and
-crossed two five-metre window boundaries while retaining 4/4 track supports.
+The latest 1,280 x 720 S-turn drive acceptance run started with 265,483 particles
+and crossed three five-metre window boundaries while retaining 4/4 track supports.
 The permanent full-field preview took 59.94 ms once during startup. Subsequent
 window commits updated its mask in 2.80 ms and 2.52 ms without rebuilding the
-96,800-triangle geometry. Window preparation measured 19.81 ms and 24.02 ms;
-the corresponding three- and six-chunk historical proxies took 2.06 ms and
-4.27 ms to build (13,824 and 27,648 triangles). Warm sampled GPU solver/readback
-times were mainly 15.7--20.0 ms. These are observations from the development
+96,800-triangle geometry. Window preparation measured 21.01 ms, 23.87 ms and
+30.30 ms; the corresponding three-, six- and nine-chunk historical proxies
+remained free of detached grey triangles in the capture. Warm sampled GPU
+solver/readback times were mainly 17.6--23.6 ms. These are observations from the development
 machine, not a general hardware guarantee.
 
 After the edge-prefetch update, a paced two-boundary traversal measured 14.17 ms
