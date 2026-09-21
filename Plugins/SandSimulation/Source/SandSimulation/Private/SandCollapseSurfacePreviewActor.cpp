@@ -11,6 +11,7 @@
 #include "Components/BoxComponent.h"
 #include "EngineUtils.h"
 #include "HAL/PlatformTime.h"
+#include "Materials/MaterialInterface.h"
 #include "Misc/CommandLine.h"
 #include "Misc/Parse.h"
 #include "ProceduralMeshComponent.h"
@@ -172,6 +173,9 @@ struct FLunarChunkCache
     {
         TArray<float> Heights;
         Heights.Init(-TNumericLimits<float>::Max(),Resolution * Resolution);
+        TArray<float> BestSurfaceScore;
+        BestSurfaceScore.Init(
+            -TNumericLimits<float>::Max(),Resolution * Resolution);
         const float Spacing = ChunkWidthMeters / (Resolution - 1);
         const float MinimumX = ChunkOriginMeters() + Key.X * ChunkWidthMeters;
         const float MinimumY = ChunkOriginMeters() + Key.Y * ChunkWidthMeters;
@@ -184,12 +188,42 @@ struct FLunarChunkCache
                     continue;
                 }
                 const FVector3f Position(Particle.PositionAndMass);
-                const int32 X = FMath::Clamp(FMath::RoundToInt(
-                    (Position.X - MinimumX) / Spacing),0,Resolution - 1);
-                const int32 Y = FMath::Clamp(FMath::RoundToInt(
-                    (Position.Y - MinimumY) / Spacing),0,Resolution - 1);
-                float& Height = Heights[X + Y * Resolution];
-                Height = FMath::Max(Height,Position.Z + 0.42f * CellSize);
+                const float GridX = FMath::Clamp(
+                    (Position.X - MinimumX) / Spacing,0.0f,float(Resolution - 1));
+                const float GridY = FMath::Clamp(
+                    (Position.Y - MinimumY) / Spacing,0.0f,float(Resolution - 1));
+                const int32 CenterX = FMath::RoundToInt(GridX);
+                const int32 CenterY = FMath::RoundToInt(GridY);
+                // Reconstruct an upper surface with a 45-degree horizontal
+                // distance penalty. Pure nearest-XY selection can choose a
+                // deep particle after columns shear; pure maximum height
+                // bridges a narrow track with its raised shoulders. This cone
+                // envelope rejects both failure modes.
+                for (int32 OffsetY = -1; OffsetY <= 1; ++OffsetY)
+                {
+                    for (int32 OffsetX = -1; OffsetX <= 1; ++OffsetX)
+                    {
+                        const int32 X = CenterX + OffsetX;
+                        const int32 Y = CenterY + OffsetY;
+                        if (X < 0 || X >= Resolution || Y < 0 || Y >= Resolution)
+                        {
+                            continue;
+                        }
+                        const float NodeX = MinimumX + X * Spacing;
+                        const float NodeY = MinimumY + Y * Spacing;
+                        const float DistanceMeters = FMath::Sqrt(
+                            FMath::Square(Position.X - NodeX) +
+                            FMath::Square(Position.Y - NodeY));
+                        const int32 Index = X + Y * Resolution;
+                        const float CandidateHeight = Position.Z + CellSize;
+                        const float SurfaceScore = CandidateHeight - 3.0f * DistanceMeters;
+                        if (SurfaceScore > BestSurfaceScore[Index])
+                        {
+                            BestSurfaceScore[Index] = SurfaceScore;
+                            Heights[Index] = CandidateHeight;
+                        }
+                    }
+                }
             }
         }
         for (int32 Y = 0; Y < Resolution; ++Y)
@@ -199,13 +233,12 @@ struct FLunarChunkCache
                 float& Height = Heights[X + Y * Resolution];
                 if (Height <= -TNumericLimits<float>::Max() * 0.5f)
                 {
-                    const bool bBoundary = X == 0 || Y == 0 ||
-                        X == Resolution - 1 || Y == Resolution - 1;
-                    Height = bBoundary
-                        ? Sand::Lunar::ActiveSurfaceHeightMeters(
-                            MinimumX + X * Spacing,MinimumY + Y * Spacing,
-                            SandDepthMeters,PlayableWidthMeters)
-                        : 0.02f;
+                    // An unsampled point means "unchanged terrain", not the
+                    // sandbox floor. This fallback closes sparse cells while
+                    // retaining all particle-supported depressions and piles.
+                    Height = Sand::Lunar::ActiveSurfaceHeightMeters(
+                        MinimumX + X * Spacing,MinimumY + Y * Spacing,
+                        SandDepthMeters,PlayableWidthMeters);
                 }
             }
         }
@@ -231,6 +264,12 @@ ASandCollapseSurfacePreviewActor::~ASandCollapseSurfacePreviewActor() = default;
 void ASandCollapseSurfacePreviewActor::BeginPlay()
 {
     Super::BeginPlay();
+
+    if (UMaterialInterface* LunarTerrainMaterial = LoadObject<UMaterialInterface>(
+        nullptr,TEXT("/Game/Materials/M_LunarTerrainMaskV2.M_LunarTerrainMaskV2")))
+    {
+        SurfaceMesh->SetMaterial(0,LunarTerrainMaterial);
+    }
 
     FSandMaterialParameters Material =
         FParse::Param(FCommandLine::Get(), TEXT("SandLooseBaseline"))
@@ -538,7 +577,11 @@ void ASandCollapseSurfacePreviewActor::Tick(const float DeltaSeconds)
             TrackTool.AxisY = FVector3f(TrackTransform.GetUnitAxis(EAxis::Y));
             TrackTool.AxisZ = FVector3f(TrackTransform.GetUnitAxis(EAxis::Z));
             TrackTool.HalfExtentsMeters =
-                FVector3f(Track->GetScaledBoxExtent() / 100.0) + FVector3f(0.003f);
+                FVector3f(Track->GetScaledBoxExtent() / 100.0) +
+                // Keep a modest sole margin for stable granular contact. A
+                // full-cell extension produced visible compaction but also
+                // unrealistic bogging and chassis pitch on level terrain.
+                FVector3f(0.006f,0.012f,0.025f);
             TrackTool.LinearVelocityMetersPerSecond = ChassisLinearVelocity;
             TrackTool.AngularVelocityRadiansPerSecond = ChassisAngularVelocity;
         };
@@ -784,7 +827,10 @@ void ASandCollapseSurfacePreviewActor::Tick(const float DeltaSeconds)
                         const double ShiftCpuStart = FPlatformTime::Seconds();
                         const FVector2f PreviousCenter = Cache.ActiveCenterMeters;
                         Cache.StoreResidentWindow(Particles);
-                        constexpr int32 DeformationResolution = 33;
+                        // About ten centimetres per persisted vertex retains
+                        // bucket-scale excavation while keeping a multi-chunk
+                        // handoff below the cost of the live surface rebuild.
+                        constexpr int32 DeformationResolution = 49;
                         const float DeformationSpacing = Cache.ChunkWidthMeters /
                             (DeformationResolution - 1);
                         const FIntPoint PreviousMinimumKey =

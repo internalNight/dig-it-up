@@ -4,6 +4,7 @@
 #include "SandLunarWorldActor.generated.h"
 
 class ASandCollapseSurfacePreviewActor;
+class ASandExcavatorPawn;
 class UProceduralMeshComponent;
 class USceneComponent;
 
@@ -31,8 +32,10 @@ private:
     void BuildMacroTerrain();
     void BuildDistantTerrain();
     void BuildTransitionTerrain();
+    void UpdateTransitionVisibility();
     void BuildCachedDeformationTerrain();
     void BuildRocks();
+    void UpdateTrackMarks();
 
     UPROPERTY()
     TObjectPtr<USceneComponent> SceneRoot;
@@ -50,6 +53,9 @@ private:
     TObjectPtr<UProceduralMeshComponent> CachedDeformationTerrain;
 
     UPROPERTY()
+    TObjectPtr<UProceduralMeshComponent> TrackMarks;
+
+    UPROPERTY()
     TObjectPtr<UProceduralMeshComponent> StaticRocks;
 
     UPROPERTY(Transient)
@@ -58,6 +64,7 @@ private:
     TArray<float> DynamicRockSupportRadiiCentimeters;
     TArray<float> DynamicRockHalfHeightsCentimeters;
     TWeakObjectPtr<ASandCollapseSurfacePreviewActor> SandSurface;
+    TWeakObjectPtr<ASandExcavatorPawn> Excavator;
     float RockTestElapsedSeconds = 0.0f;
     float RockTestLastLogSeconds = -1.0f;
     bool bRockTestImpulseApplied = false;
@@ -65,5 +72,17 @@ private:
     TMap<FIntPoint,TArray<float>> CachedDeformationHeights;
     int32 CachedDeformationResolution = 0;
     float CachedDeformationSpacingMeters = 0.0f;
+    TArray<FVector> TransitionVertices;
+    TArray<FVector> TransitionNormals;
+    TArray<FVector2D> TransitionUVs;
+    TArray<FLinearColor> TransitionColors;
+    TArray<FVector> TrackMarkVertices;
+    TArray<int32> TrackMarkIndices;
+    TArray<FVector> TrackMarkNormals;
+    TArray<FVector2D> TrackMarkUVs;
+    TArray<FLinearColor> TrackMarkColors;
+    FVector PreviousLeftTrackMark = FVector::ZeroVector;
+    FVector PreviousRightTrackMark = FVector::ZeroVector;
+    bool bHasPreviousTrackMark = false;
     bool bOverviewMode = false;
 };

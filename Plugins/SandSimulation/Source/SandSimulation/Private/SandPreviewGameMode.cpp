@@ -369,6 +369,7 @@ void ASandPreviewGameMode::BeginPlay()
             FParse::Param(FCommandLine::Get(),TEXT("SandAutopilot")) ||
             FParse::Param(FCommandLine::Get(),TEXT("SandWindowTest")) ||
             FParse::Param(FCommandLine::Get(),TEXT("SandPrefetchTest")) ||
+            FParse::Param(FCommandLine::Get(),TEXT("SandDriveTraceTest")) ||
             FParse::Param(FCommandLine::Get(),TEXT("SandGemTest")) ||
             FParse::Param(FCommandLine::Get(),TEXT("SandDetectorTest")) ||
             FParse::Param(FCommandLine::Get(),TEXT("SandVictoryTest")) ||

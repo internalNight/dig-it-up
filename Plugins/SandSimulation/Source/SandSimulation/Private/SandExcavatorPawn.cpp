@@ -336,8 +336,10 @@ void ASandExcavatorPawn::Tick(const float DeltaSeconds)
     const bool bBoomRaiseTest = FParse::Param(FCommandLine::Get(), TEXT("SandBoomRaiseTest"));
     const bool bWindowTest = FParse::Param(FCommandLine::Get(), TEXT("SandWindowTest"));
     const bool bPrefetchTest = FParse::Param(FCommandLine::Get(),TEXT("SandPrefetchTest"));
+    const bool bDriveTraceTest = FParse::Param(
+        FCommandLine::Get(),TEXT("SandDriveTraceTest"));
     const bool bAutopilotDemo = bBoundaryTest || bBoomRaiseTest ||
-        bWindowTest || bPrefetchTest ||
+        bWindowTest || bPrefetchTest || bDriveTraceTest ||
         FParse::Param(FCommandLine::Get(), TEXT("SandAutopilot")) ||
         FParse::Param(FCommandLine::Get(), TEXT("SandVictoryTest"));
     const bool bSlopeCoastTest = FParse::Param(FCommandLine::Get(), TEXT("SandSlopeCoastTest"));
@@ -463,6 +465,13 @@ void ASandExcavatorPawn::Tick(const float DeltaSeconds)
     if (bWindowTest || bPrefetchTest)
     {
         bBrake = true;
+    }
+    else if (bDriveTraceTest)
+    {
+        // Long, steady traverse used to verify that the vehicle advances,
+        // resident windows migrate, and the departed track remains visible.
+        Throttle = ElapsedSimulationSeconds < 22.0f ? 0.72f : 0.0f;
+        bBrake = ElapsedSimulationSeconds >= 22.0f;
     }
     else if (bBoundaryTest)
     {

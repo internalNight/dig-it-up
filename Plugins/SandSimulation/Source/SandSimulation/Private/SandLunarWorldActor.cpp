@@ -3,7 +3,9 @@
 #include "SandLevelSettings.h"
 #include "SandLunarTerrain.h"
 #include "SandCollapseSurfacePreviewActor.h"
+#include "SandExcavatorPawn.h"
 
+#include "Components/BoxComponent.h"
 #include "Components/SceneComponent.h"
 #include "Engine/CollisionProfile.h"
 #include "EngineUtils.h"
@@ -250,7 +252,7 @@ ASandLunarWorldActor::ASandLunarWorldActor()
     // The analytic collar sits just below the live granular top.  The live
     // top now reaches the resident edge while only its closure walls are
     // culled, so this underlay cannot create an inner square intersection.
-    TransitionTerrain->SetRelativeLocation(FVector(0.0f,0.0f,-1.0f));
+    TransitionTerrain->SetRelativeLocation(FVector(0.0f,0.0f,-4.0f));
     // The vehicle and tools always remain inside the following physical MPM
     // window. Collision on this visual collar only forced a 40k-triangle Chaos
     // recook at every shift and was a major hitch source.
@@ -264,15 +266,31 @@ ASandLunarWorldActor::ASandLunarWorldActor()
     // carry the large-scale shadow so a streamed proxy edge cannot flash a
     // square, physically implausible shadow during a window commit.
     CachedDeformationTerrain->SetCastShadow(false);
+    TrackMarks = CreateDefaultSubobject<UProceduralMeshComponent>(
+        TEXT("PersistentTrackMarks"));
+    TrackMarks->SetupAttachment(SceneRoot);
+    TrackMarks->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+    TrackMarks->SetCastShadow(false);
     static ConstructorHelpers::FObjectFinder<UMaterialInterface> VertexColorMaterial(
         TEXT("/Engine/EngineDebugMaterials/VertexColorMaterial.VertexColorMaterial"));
     if (VertexColorMaterial.Succeeded())
     {
         MacroTerrain->SetMaterial(0,VertexColorMaterial.Object);
         DistantTerrain->SetMaterial(0,VertexColorMaterial.Object);
-        TransitionTerrain->SetMaterial(0,VertexColorMaterial.Object);
         CachedDeformationTerrain->SetMaterial(0,VertexColorMaterial.Object);
     }
+    static ConstructorHelpers::FObjectFinder<UMaterialInterface> WindowedTerrainMaterial(
+        TEXT("/Game/Materials/M_LunarTerrainMaskV2.M_LunarTerrainMaskV2"));
+    UMaterialInterface* SharedTerrainMaterial = WindowedTerrainMaterial.Succeeded()
+        ? WindowedTerrainMaterial.Object : VertexColorMaterial.Object;
+    // A common world-space material prevents the resident MPM surface,
+    // persisted deformation proxy and analytic distance field from reading as
+    // three differently shaded square layers.
+    MacroTerrain->SetMaterial(0,SharedTerrainMaterial);
+    DistantTerrain->SetMaterial(0,SharedTerrainMaterial);
+    TransitionTerrain->SetMaterial(0,SharedTerrainMaterial);
+    CachedDeformationTerrain->SetMaterial(0,SharedTerrainMaterial);
+    TrackMarks->SetMaterial(0,SharedTerrainMaterial);
 
     StaticRocks = CreateDefaultSubobject<UProceduralMeshComponent>(TEXT("StaticLunarRocks"));
     StaticRocks->SetupAttachment(SceneRoot);
@@ -311,7 +329,7 @@ void ASandLunarWorldActor::SetOverviewMode(const bool bEnabled)
         SandSurface->SetActorHiddenInGame(bOverviewMode);
     }
     CachedDeformationTerrain->SetVisibility(!bOverviewMode,true);
-    BuildTransitionTerrain();
+    UpdateTransitionVisibility();
     UE_LOG(LogTemp,Display,TEXT("LUNAR_OVERVIEW mode=%d liveSurfaceVisible=%d"),
         bOverviewMode ? 1 : 0,bOverviewMode ? 0 : 1);
 }
@@ -329,6 +347,33 @@ void ASandLunarWorldActor::CacheDeformationChunk(
     }
     CachedDeformationResolution = Resolution;
     CachedDeformationSpacingMeters = SpacingMeters;
+    const USandLevelSettings* Settings = GetDefault<USandLevelSettings>();
+    constexpr float ChunkWidth = 5.0f;
+    const float ChunkOrigin = -0.5f * Settings->ActiveWidthMeters;
+    float MinimumDelta = TNumericLimits<float>::Max();
+    float MaximumDelta = -TNumericLimits<float>::Max();
+    int32 DepressedSampleCount = 0;
+    for (int32 Y = 0; Y < Resolution; ++Y)
+    {
+        for (int32 X = 0; X < Resolution; ++X)
+        {
+            const float WorldX = ChunkOrigin + ChunkKey.X * ChunkWidth +
+                X * SpacingMeters;
+            const float WorldY = ChunkOrigin + ChunkKey.Y * ChunkWidth +
+                Y * SpacingMeters;
+            const float Reference = Sand::Lunar::ActiveSurfaceHeightMeters(
+                WorldX,WorldY,Settings->SandDepthMeters,
+                Settings->LunarPlayableWidthMeters);
+            const float Delta = HeightMeters[X + Y * Resolution] - Reference;
+            MinimumDelta = FMath::Min(MinimumDelta,Delta);
+            MaximumDelta = FMath::Max(MaximumDelta,Delta);
+            DepressedSampleCount += Delta < -0.005f ? 1 : 0;
+        }
+    }
+    UE_LOG(LogTemp,Display,
+        TEXT("LUNAR_TRACE_CAPTURE key=(%d,%d) minDelta=%.3fm maxDelta=%.3fm depressed=%d/%d"),
+        ChunkKey.X,ChunkKey.Y,MinimumDelta,MaximumDelta,
+        DepressedSampleCount,HeightMeters.Num());
     CachedDeformationHeights.Add(ChunkKey,MoveTemp(HeightMeters));
 }
 
@@ -339,8 +384,8 @@ void ASandLunarWorldActor::SetActiveWindowCenterMeters(const FVector2f NewCenter
         return;
     }
     ActiveWindowCenterMeters = NewCenterMeters;
-    BuildTransitionTerrain();
     BuildCachedDeformationTerrain();
+    UpdateTransitionVisibility();
 }
 
 void ASandLunarWorldActor::BuildMacroTerrain()
@@ -364,7 +409,10 @@ void ASandLunarWorldActor::BuildMacroTerrain()
             const float X1 = X0 + Step;
             const float Y1 = Y0 + Step;
             const FVector2f Center(0.5f * (X0 + X1), 0.5f * (Y0 + Y1));
-            if (FMath::Max(FMath::Abs(Center.X), FMath::Abs(Center.Y)) < 64.0f)
+            // The permanent detailed preview reaches 55 m from the origin.
+            // Leave a small underlap so the 8 m macro grid can never expose a
+            // horizon-facing crack at the edge of the 100 m playable field.
+            if (FMath::Max(FMath::Abs(Center.X), FMath::Abs(Center.Y)) < 52.0f)
             {
                 continue;
             }
@@ -415,77 +463,126 @@ void ASandLunarWorldActor::BuildDistantTerrain()
 
 void ASandLunarWorldActor::BuildTransitionTerrain()
 {
+    if (!TransitionVertices.IsEmpty())
+    {
+        UpdateTransitionVisibility();
+        return;
+    }
     const double BuildStartSeconds = FPlatformTime::Seconds();
     const USandLevelSettings* Settings = GetDefault<USandLevelSettings>();
     const float BaseDepth = Settings->SandDepthMeters;
     const float ActiveWidth = Settings->LunarPlayableWidthMeters;
-    const float ResidentWidth = Settings->ActiveWidthMeters;
-    constexpr float ChunkWidth = 5.0f;
-    const float ChunkOrigin = -0.5f * ResidentWidth;
-    const int32 ResidentChunkCount = FMath::Max(1,
-        FMath::RoundToInt(ResidentWidth / ChunkWidth));
-    const FIntPoint MinimumActiveKey(
-        FMath::RoundToInt(ActiveWindowCenterMeters.X / ChunkWidth),
-        FMath::RoundToInt(ActiveWindowCenterMeters.Y / ChunkWidth));
-    const auto IsActiveKey = [MinimumActiveKey,ResidentChunkCount](const FIntPoint Key)
+    // This mesh is the always-resident visual truth for the complete 100 m
+    // playable field.  It is built once on a shared 0.5 m grid, so sub-metre
+    // craters and channels are already visible in the distance. Window shifts
+    // only change vertex alpha; they never reconstruct geometry.
+    constexpr float HalfExtent = 55.0f;
+    constexpr float Step = 0.5f;
+    const int32 Resolution = FMath::RoundToInt(2.0f * HalfExtent / Step) + 1;
+    TransitionVertices.Reserve(Resolution * Resolution);
+    TransitionNormals.Reserve(Resolution * Resolution);
+    TransitionUVs.Reserve(Resolution * Resolution);
+    TransitionColors.Reserve(Resolution * Resolution);
+    TArray<int32> Indices;
+    Indices.Reserve((Resolution - 1) * (Resolution - 1) * 6);
+    const FLinearColor RegolithColor(0.23f,0.24f,0.26f,1.0f);
+    for (int32 Y = 0; Y < Resolution; ++Y)
     {
-        return Key.X >= MinimumActiveKey.X &&
-            Key.X < MinimumActiveKey.X + ResidentChunkCount &&
-            Key.Y >= MinimumActiveKey.Y &&
-            Key.Y < MinimumActiveKey.Y + ResidentChunkCount;
-    };
-    // A 2.5 m visual grid is sufficient outside the live 15 m MPM patch and
-    // aligns exactly with the 5 m persistence chunks.  The former 1 m rebuild
-    // generated about 41k triangles and cost roughly 95 ms on every shift.
-    // This collar stays under the macro mesh at its outer edge while reducing
-    // the streamed rebuild to about 5.8k triangles.
-    constexpr float HalfRing = 67.5f;
-    constexpr float Step = 2.5f;
-    // Slight overlap hides the independent marching-cubes edge without
-    // covering the playable top surface.
-    // A broad analytic-under-live overlap stays closed on steep slopes and at
-    // oblique camera angles. The machine is always within 2.5 m of the window
-    // centre, so this 2.75 m collar never covers the working bucket region.
-    const float HoleHalf = 0.5f * ResidentWidth - 2.75f;
-    FMeshSectionData Ring;
-    for (float Y = -HalfRing; Y < HalfRing - 0.1f; Y += Step)
-    {
-        for (float X = -HalfRing; X < HalfRing - 0.1f; X += Step)
+        for (int32 X = 0; X < Resolution; ++X)
         {
-            const FVector2f Center(X + 0.5f * Step, Y + 0.5f * Step);
-            if (!bOverviewMode && FMath::Max(
-                FMath::Abs(Center.X - ActiveWindowCenterMeters.X),
-                FMath::Abs(Center.Y - ActiveWindowCenterMeters.Y)) < HoleHalf)
-            {
-                continue;
-            }
-            const FIntPoint ChunkKey(
-                FMath::FloorToInt((Center.X - ChunkOrigin) / ChunkWidth),
-                FMath::FloorToInt((Center.Y - ChunkOrigin) / ChunkWidth));
-            const float LocalX = Center.X - (
-                ChunkOrigin + ChunkKey.X * ChunkWidth);
-            const float LocalY = Center.Y - (
-                ChunkOrigin + ChunkKey.Y * ChunkWidth);
-            constexpr float ChunkAlignmentTolerance = 0.01f;
-            const bool bFullyInsideChunk =
-                LocalX >= 0.5f * Step - ChunkAlignmentTolerance &&
-                LocalX <= ChunkWidth - 0.5f * Step + ChunkAlignmentTolerance &&
-                LocalY >= 0.5f * Step - ChunkAlignmentTolerance &&
-                LocalY <= ChunkWidth - 0.5f * Step + ChunkAlignmentTolerance;
-            if (!IsActiveKey(ChunkKey) && bFullyInsideChunk &&
-                CachedDeformationHeights.Contains(ChunkKey))
-            {
-                continue;
-            }
-            AppendQuad(Ring, X, Y, X + Step, Y + Step, Step, BaseDepth, ActiveWidth,
-                FLinearColor(0.23f,0.24f,0.26f),bOverviewMode);
+            const float WorldX = -HalfExtent + X * Step;
+            const float WorldY = -HalfExtent + Y * Step;
+            const float Height = Sand::Lunar::MacroSurfaceHeightMeters(
+                WorldX,WorldY,BaseDepth,ActiveWidth);
+            TransitionVertices.Add(FVector(WorldX,WorldY,Height) * 100.0f);
+            TransitionNormals.Add(SurfaceNormal(
+                WorldX,WorldY,Step,BaseDepth,ActiveWidth));
+            TransitionUVs.Add(FVector2D(WorldX,WorldY) * 0.018f);
+            const float Tone = 0.92f + 0.08f * FMath::PerlinNoise2D(
+                FVector2D(WorldX + 11.7f,WorldY - 3.2f) * 1.15f);
+            TransitionColors.Add(RegolithColor * Tone);
         }
     }
-    const int32 TriangleCount = Ring.Indices.Num()/3;
-    UploadSection(TransitionTerrain,0,MoveTemp(Ring),false);
-    UE_LOG(LogTemp,Verbose,
-        TEXT("LUNAR_TRANSITION_BUILD triangles=%d collision=0 cpuMs=%.2f"),
-        TriangleCount,1000.0*(FPlatformTime::Seconds()-BuildStartSeconds));
+    for (int32 Y = 0; Y < Resolution - 1; ++Y)
+    {
+        for (int32 X = 0; X < Resolution - 1; ++X)
+        {
+            const int32 A = X + Y * Resolution;
+            const int32 B = A + 1;
+            const int32 D = A + Resolution;
+            const int32 C = D + 1;
+            Indices.Append({A,C,B,A,D,C});
+        }
+    }
+    TransitionTerrain->CreateMeshSection_LinearColor(
+        0,TransitionVertices,Indices,TransitionNormals,TransitionUVs,TransitionColors,
+        TArray<FProcMeshTangent>(),false,false);
+    UpdateTransitionVisibility();
+    UE_LOG(LogTemp,Display,
+        TEXT("LUNAR_PREVIEW_BUILD size=110m step=0.5m vertices=%d triangles=%d collision=0 cpuMs=%.2f"),
+        TransitionVertices.Num(),Indices.Num()/3,
+        1000.0*(FPlatformTime::Seconds()-BuildStartSeconds));
+}
+
+void ASandLunarWorldActor::UpdateTransitionVisibility()
+{
+    if (TransitionVertices.IsEmpty() ||
+        TransitionColors.Num() != TransitionVertices.Num())
+    {
+        return;
+    }
+    const double UpdateStartSeconds = FPlatformTime::Seconds();
+    const USandLevelSettings* Settings = GetDefault<USandLevelSettings>();
+    constexpr float ChunkWidth = 5.0f;
+    constexpr float CachedOverlap = 0.28f;
+    const float ChunkOrigin = -0.5f * Settings->ActiveWidthMeters;
+    // Keep one metre of the analytic preview beneath the live MPM boundary.
+    // The overlap prevents a grazing-angle crack without hiding the working
+    // surface around the tracks and bucket.
+    const float LiveHoleHalf = 0.5f * Settings->ActiveWidthMeters - 1.0f;
+    int32 HiddenVertices = 0;
+    for (int32 Index = 0; Index < TransitionVertices.Num(); ++Index)
+    {
+        const FVector2f Point(
+            TransitionVertices[Index].X / 100.0f,
+            TransitionVertices[Index].Y / 100.0f);
+        bool bHide = !bOverviewMode && FMath::Max(
+            FMath::Abs(Point.X - ActiveWindowCenterMeters.X),
+            FMath::Abs(Point.Y - ActiveWindowCenterMeters.Y)) < LiveHoleHalf;
+        if (!bHide && !bOverviewMode)
+        {
+            const FIntPoint BaseKey(
+                FMath::FloorToInt((Point.X - ChunkOrigin) / ChunkWidth),
+                FMath::FloorToInt((Point.Y - ChunkOrigin) / ChunkWidth));
+            for (int32 OffsetY = -1; OffsetY <= 0 && !bHide; ++OffsetY)
+            {
+                for (int32 OffsetX = -1; OffsetX <= 0 && !bHide; ++OffsetX)
+                {
+                    const FIntPoint Key = BaseKey + FIntPoint(OffsetX,OffsetY);
+                    if (!CachedDeformationHeights.Contains(Key))
+                    {
+                        continue;
+                    }
+                    const float MinimumX = ChunkOrigin + Key.X * ChunkWidth;
+                    const float MinimumY = ChunkOrigin + Key.Y * ChunkWidth;
+                    bHide = Point.X >= MinimumX - CachedOverlap &&
+                        Point.X <= MinimumX + ChunkWidth + CachedOverlap &&
+                        Point.Y >= MinimumY - CachedOverlap &&
+                        Point.Y <= MinimumY + ChunkWidth + CachedOverlap;
+                }
+            }
+        }
+        TransitionColors[Index].A = bHide ? 0.0f : 1.0f;
+        HiddenVertices += bHide ? 1 : 0;
+    }
+    TransitionTerrain->UpdateMeshSection_LinearColor(
+        0,TransitionVertices,TransitionNormals,TransitionUVs,TransitionColors,
+        TArray<FProcMeshTangent>(),false);
+    UE_LOG(LogTemp,Display,
+        TEXT("LUNAR_PREVIEW_MASK center=(%.1f,%.1f)m cached=%d hiddenVertices=%d cpuMs=%.2f"),
+        ActiveWindowCenterMeters.X,ActiveWindowCenterMeters.Y,
+        CachedDeformationHeights.Num(),HiddenVertices,
+        1000.0*(FPlatformTime::Seconds()-UpdateStartSeconds));
 }
 
 void ASandLunarWorldActor::BuildCachedDeformationTerrain()
@@ -633,9 +730,123 @@ void ASandLunarWorldActor::BuildRocks()
         DynamicRocks.Num(),FMath::Max(0,RockCount-DynamicRocks.Num()));
 }
 
+void ASandLunarWorldActor::UpdateTrackMarks()
+{
+    if (!Excavator.IsValid())
+    {
+        for (TActorIterator<ASandExcavatorPawn> It(GetWorld()); It; ++It)
+        {
+            Excavator = *It;
+            break;
+        }
+    }
+    if (!Excavator.IsValid() || Excavator->ChassisBody == nullptr ||
+        Excavator->LeftTrackCollider == nullptr ||
+        Excavator->RightTrackCollider == nullptr)
+    {
+        return;
+    }
+    const float SpeedCentimetersPerSecond =
+        Excavator->ChassisBody->GetPhysicsLinearVelocity().Size2D();
+    if (SpeedCentimetersPerSecond < 5.0f)
+    {
+        return;
+    }
+    const auto GroundMark = [this](const UBoxComponent* Track)
+    {
+        const FTransform Transform = Track->GetComponentTransform();
+        FVector Mark = Transform.GetLocation();
+        float SurfaceHeightCentimeters = 0.0f;
+        if (SandSurface.IsValid() &&
+            SandSurface->SampleSandSurfaceHeightCentimeters(
+                FVector2D(Mark.X,Mark.Y),6.0f,SurfaceHeightCentimeters))
+        {
+            Mark.Z = SurfaceHeightCentimeters + 1.2f;
+        }
+        else
+        {
+            const USandLevelSettings* Settings = GetDefault<USandLevelSettings>();
+            Mark.Z = 100.0f * Sand::Lunar::ActiveSurfaceHeightMeters(
+                Mark.X / 100.0f,Mark.Y / 100.0f,Settings->SandDepthMeters,
+                Settings->LunarPlayableWidthMeters) + 1.2f;
+        }
+        return Mark;
+    };
+    const FVector Left = GroundMark(Excavator->LeftTrackCollider);
+    const FVector Right = GroundMark(Excavator->RightTrackCollider);
+    if (!bHasPreviousTrackMark)
+    {
+        PreviousLeftTrackMark = Left;
+        PreviousRightTrackMark = Right;
+        bHasPreviousTrackMark = true;
+        return;
+    }
+    const float TravelDistance = 0.5f * (
+        FVector::Dist2D(Left,PreviousLeftTrackMark) +
+        FVector::Dist2D(Right,PreviousRightTrackMark));
+    if (TravelDistance > 120.0f)
+    {
+        // A test teleport or external reposition is not a travelled path.
+        PreviousLeftTrackMark = Left;
+        PreviousRightTrackMark = Right;
+        return;
+    }
+    if (TravelDistance < 12.0f)
+    {
+        return;
+    }
+    const int32 SegmentIndex = TrackMarkIndices.Num() / 12;
+    // Compacted regolith should remain readable without becoming a black
+    // graphic line at grazing angles. The mark is only moderately darker than
+    // the 0.23/0.24/0.26 terrain and does not cast its own shadow.
+    const FLinearColor DisturbedRegolith = SegmentIndex % 3 == 0
+        ? FLinearColor(0.12f,0.125f,0.135f,1.0f)
+        : FLinearColor(0.145f,0.150f,0.160f,1.0f);
+    const auto AddStrip = [this,&DisturbedRegolith](
+        const FVector Previous,const FVector Current)
+    {
+        FVector Direction = Current - Previous;
+        Direction.Z = 0.0f;
+        if (!Direction.Normalize())
+        {
+            return;
+        }
+        constexpr float HalfWidthCentimeters = 4.8f;
+        const FVector Side = FVector::CrossProduct(FVector::UpVector,Direction) *
+            HalfWidthCentimeters;
+        const int32 First = TrackMarkVertices.Num();
+        TrackMarkVertices.Append({
+            Previous - Side,Previous + Side,Current + Side,Current - Side});
+        TrackMarkNormals.Append({
+            FVector::UpVector,FVector::UpVector,FVector::UpVector,FVector::UpVector});
+        TrackMarkUVs.Append({
+            FVector2D(0.0f,0.0f),FVector2D(1.0f,0.0f),
+            FVector2D(1.0f,1.0f),FVector2D(0.0f,1.0f)});
+        TrackMarkColors.Append({
+            DisturbedRegolith,DisturbedRegolith,
+            DisturbedRegolith,DisturbedRegolith});
+        TrackMarkIndices.Append({
+            First,First + 2,First + 1,First,First + 3,First + 2});
+    };
+    AddStrip(PreviousLeftTrackMark,Left);
+    AddStrip(PreviousRightTrackMark,Right);
+    PreviousLeftTrackMark = Left;
+    PreviousRightTrackMark = Right;
+    TrackMarks->CreateMeshSection_LinearColor(
+        0,TrackMarkVertices,TrackMarkIndices,TrackMarkNormals,TrackMarkUVs,
+        TrackMarkColors,TArray<FProcMeshTangent>(),false,false);
+    if (SegmentIndex == 0 || SegmentIndex % 100 == 0)
+    {
+        UE_LOG(LogTemp,Display,
+            TEXT("LUNAR_TRACK_HISTORY segments=%d vertices=%d persistent=1"),
+            SegmentIndex + 1,TrackMarkVertices.Num());
+    }
+}
+
 void ASandLunarWorldActor::Tick(const float DeltaSeconds)
 {
     Super::Tick(DeltaSeconds);
+    UpdateTrackMarks();
     if (!SandSurface.IsValid())
     {
         for (TActorIterator<ASandCollapseSurfacePreviewActor> It(GetWorld()); It; ++It)

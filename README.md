@@ -18,7 +18,10 @@ The large landscape uses measured relief from the LROC `NAC_DTM_NOBILE03`
 product plus clearly documented designed features. It is not presented as one
 literal surveyed site. Only the local window is solved on the GPU at one time;
 five-metre chunks follow the excavator, preserve their full particle state for the
-session and leave a lightweight frozen trace surface outside the live window. See
+session and leave a lightweight frozen deformation surface outside the live
+window. A once-built 0.5 m visual mesh keeps the complete 100 m field and its
+craters visible at long range, while a persistent two-track disturbance strip
+records the driven route across window changes. See
 [source, architecture and limitations](Docs/LunarWorld.md).
 
 ## Android excavator first playable
@@ -130,6 +133,8 @@ functional transport does not establish real-machine performance.
   exposure-assisted stars and a two-hour survey-orbiter path
 - Three-by-three five-metre chunks remain live; visited chunks preserve their full
   particle state and a visible frozen deformation proxy while GPU load stays local
+- The complete field remains visible on a permanent 0.5 m preview grid; window
+  shifts update a mask instead of rebuilding terrain, and travelled tracks persist
 - No visible retaining walls in the lunar profile; the upper boundary remains open
 - Nominal 1.2 m granular depth with local highland and crater relief
 - 10 cm dense full-volume physics cells by default (about 265,000 points initially)

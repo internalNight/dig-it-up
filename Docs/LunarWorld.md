@@ -21,10 +21,13 @@ separating the scene into two computational scales.
   evict an earlier excavation during the same session. CPU memory is allocated
   only for visited chunks; a fully visited field can approach roughly 1 GB of
   raw particle-state storage.
-- Every departed chunk also produces a 33 x 33 visual heightfield. Historical
-  tracks, pits and deposited piles therefore remain visible outside the active
-  physics window. This frozen proxy does not continue simulating; when the live
-  window returns, it is hidden and the exact cached particles resume.
+- Every departed chunk also produces a 49 x 49 visual heightfield. Missing
+  samples fall back to the analytical lunar surface instead of collapsing to a
+  flat floor, and the reconstruction selects the local surface envelope rather
+  than the nearest deep particle. Historical pits and deposited piles therefore
+  remain visible outside the active physics window. This frozen proxy does not
+  continue simulating; when the live window returns, it is hidden and the exact
+  cached particles resume.
 - The default 10 cm spacing aligns exactly with 50 cells per 5 m chunk and uses
   about 265,000 material points at the landing site. Terrain height changes the
   resident count slightly. Eight internal
@@ -35,14 +38,20 @@ separating the scene into two computational scales.
   the persistent particles inside the resident window. Streaming never deletes
   or teleports particles to imitate a bucket action; first-time chunks are
   initialized terrain, while visited chunks use their cached physical state.
-- Window movement uses a two-phase visual handoff. The previous live surface and
-  transition terrain remain in place until the replacement marching-cubes mesh
-  has uploaded; only then does the terrain opening and historical trace proxy
-  move. The old full-window objective floor has been removed. Approaching an edge
-  now pre-generates one entering chunk per surface update, so ordinary driving
-  spreads initialization over several frames. Only the three departing chunks
-  are converted to frozen heightfields on a one-axis shift, instead of rebuilding
+- Window movement uses a two-phase visual handoff. The previous live surface
+  remains in place until the replacement marching-cubes mesh has uploaded; only
+  then do the permanent preview mask and historical trace proxy change. The old
+  full-window objective floor has been removed. Approaching an edge pre-generates
+  one entering chunk per surface update, so ordinary driving spreads
+  initialization over several frames. Only the three departing chunks are
+  converted to frozen heightfields on a one-axis shift, instead of rebuilding
   all nine resident chunks.
+- A separate path-driven disturbance mesh records both track trajectories every
+  12 cm of travel. It is independent of the active MPM window, remains for the
+  whole session and follows the sampled sand surface, so the travelled route does
+  not disappear when a chunk becomes inactive. The full cached particle state
+  remains the authoritative physical history; this strip is a persistent visual
+  record, not a replacement for the MPM simulation.
 - Historical deformation proxies no longer cast their own streamed chunk shadows.
   The continuous macro terrain carries the large-scale shadow, avoiding a square
   or delayed shadow flash while the proxy geometry changes; local rocks, machine
@@ -82,11 +91,14 @@ crater occur together at one surveyed coordinate.
 
 The macro terrain and its larger distant rocks are static visual context. The
 100 m field becomes interactive locally as the physics window follows the
-excavator; ten near-field rocks are independent rigid bodies. A 135 m transition
-terrain moves its opening with the resident window. Its 2.5 m grid aligns with
-the five-metre persistence chunks and costs about 5,800 triangles, while the live
-MPM top is retained to the resident edge and only its closure walls are culled.
-This removes the former inner square cut and its black grazing-angle seam.
+excavator; ten near-field rocks are independent rigid bodies. The complete
+playable field is also represented by a permanent 110 m x 110 m visual mesh on a
+0.5 m shared grid (48,841 vertices / 96,800 triangles). It is built once at
+startup, so craters, channels and relief are visible from a distance before the
+physics window reaches them. Window commits update only vertex alpha around the
+live and cached surfaces; they do not rebuild or replace terrain geometry. A
+one-metre overlap under the live edge and a common masked regolith material
+remove the former black rectangular cut and grazing-angle shading seam.
 
 The normal camera is now lower and closer to keep the excavator and bucket work
 readable. Pressing **C** changes to an oblique 1.2 km regional view with black sky
@@ -148,15 +160,15 @@ Scientific scale references:
 
 ## Measured runtime check
 
-The current 1,280 x 720 streaming acceptance run started with 265,483 particles,
-then shifted through resident counts of 274,742, 277,488 and 285,241 as terrain
-height changed. It returned to the landing-site cache with 265,483 particles,
-retained 4/4 track supports, rendered 51 FPS at capture, maintained 30/30 Hz sand
-time, and reported warmed sampled solver/readback times of 15.7--22.2 ms (with
-one 38.7 ms shift sample). The captured warmed surface build was 53.9 ms. Outside
-the resident window the run retained nine visible historical chunk proxies with
-18,432 triangles. These are observations from the development machine, not a
-general hardware guarantee.
+The latest 1,280 x 720 drive acceptance run started with 265,483 particles and
+crossed two five-metre window boundaries while retaining 4/4 track supports.
+The permanent full-field preview took 59.94 ms once during startup. Subsequent
+window commits updated its mask in 2.80 ms and 2.52 ms without rebuilding the
+96,800-triangle geometry. Window preparation measured 19.81 ms and 24.02 ms;
+the corresponding three- and six-chunk historical proxies took 2.06 ms and
+4.27 ms to build (13,824 and 27,648 triangles). Warm sampled GPU solver/readback
+times were mainly 15.7--20.0 ms. These are observations from the development
+machine, not a general hardware guarantee.
 
 After the edge-prefetch update, a paced two-boundary traversal measured 14.17 ms
 and 18.32 ms of game-thread window preparation at the two commits. The earlier
@@ -164,14 +176,12 @@ instant-teleport stress path, which deliberately bypasses the approach distance,
 still measured 27--32 ms for first-time chunks. This optimization reduces the
 normal driving hitch; it does not claim that arbitrary teleports are hitch-free.
 
-The latest seam/frame-pacing pass removed collision cooking from the moving
-transition mesh, reduced that mesh from about 41,000 to 5,800 triangles, and
-limited the expanded lunar solver to one step per submitted GPU job. On the same
-development machine, transition rebuild time fell from roughly **95 ms to
-13.4--13.5 ms**. Two paced boundary shifts measured **14.7 ms and 18.4 ms** of
-particle-window preparation; warmed solver/readback samples were **15.0--17.3
-ms**. These numbers exclude the one-time first-frame shader/runtime warm-up and
-are not a guarantee for other hardware.
+The current seam/frame-pacing pass removes the former moving transition rebuild
+entirely. It also keeps collision cooking off the permanent preview and limits
+the expanded lunar solver to one step per submitted GPU job. The only terrain
+work at a normal shift is the 2.5--2.8 ms alpha-mask update plus cached deformation
+proxy generation. These numbers exclude the one-time first-frame shader/runtime
+warm-up and are not a guarantee for other hardware.
 
 The separate regional-view capture rendered 54 FPS at capture after startup,
 held approximately 30/30 Hz sand time and showed the black airless sky without

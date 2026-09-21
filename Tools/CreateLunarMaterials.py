@@ -100,4 +100,30 @@ unreal.MaterialEditingLibrary.layout_material_expressions(rock)
 unreal.MaterialEditingLibrary.recompile_material(rock)
 unreal.EditorAssetLibrary.save_loaded_asset(rock, only_if_is_dirty=False)
 
-unreal.log("Created M_LunarSky and M_LunarRock")
+
+terrain = make_material("M_LunarTerrainMaskV2")
+terrain.set_editor_property("blend_mode", unreal.BlendMode.BLEND_MASKED)
+terrain.set_editor_property("opacity_mask_clip_value", 0.5)
+terrain.set_editor_property("two_sided", False)
+terrain_vertex = expression(terrain, unreal.MaterialExpressionVertexColor, -320, -60)
+unreal.MaterialEditingLibrary.connect_material_property(
+    terrain_vertex, "", unreal.MaterialProperty.MP_BASE_COLOR
+)
+unreal.MaterialEditingLibrary.connect_material_property(
+    terrain_vertex, "A", unreal.MaterialProperty.MP_OPACITY_MASK
+)
+terrain_roughness = expression(terrain, unreal.MaterialExpressionConstant, -110, 170)
+terrain_roughness.set_editor_property("r", 0.96)
+unreal.MaterialEditingLibrary.connect_material_property(
+    terrain_roughness, "", unreal.MaterialProperty.MP_ROUGHNESS
+)
+terrain_specular = expression(terrain, unreal.MaterialExpressionConstant, -110, 250)
+terrain_specular.set_editor_property("r", 0.10)
+unreal.MaterialEditingLibrary.connect_material_property(
+    terrain_specular, "", unreal.MaterialProperty.MP_SPECULAR
+)
+unreal.MaterialEditingLibrary.layout_material_expressions(terrain)
+unreal.MaterialEditingLibrary.recompile_material(terrain)
+unreal.EditorAssetLibrary.save_loaded_asset(terrain, only_if_is_dirty=False)
+
+unreal.log("Created lunar sky, celestial, rock and windowed-terrain materials")
