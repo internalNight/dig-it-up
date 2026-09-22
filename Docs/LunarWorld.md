@@ -147,7 +147,10 @@ near-field parallax. Earth is rendered at **1.90 degrees**, derived from a
 12,742 km diameter and 384,400 km mean Earth-Moon distance; the Sun is **0.53
 degrees**. For this south-polar near-side composition Earth stays low and nearly
 fixed instead of rising and setting. Its phase, blue ocean, land and cloud/ice
-bands are generated procedurally. The survey orbiter follows a two-hour path,
+bands are generated procedurally on a shared 64 x 128 vertex grid. Continuous
+vertex shading provides a soft day/night terminator, subdued surface variation
+and a thin view-dependent atmospheric rim without using an Earth photograph.
+The survey orbiter follows a two-hour path,
 representative of a low lunar mapping orbit, but its model is enlarged so a
 player can actually notice it.
 

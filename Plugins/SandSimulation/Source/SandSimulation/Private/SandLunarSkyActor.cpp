@@ -34,20 +34,6 @@ void UploadSkyMesh(UProceduralMeshComponent* Component, FSkyMesh&& Mesh,
         TArray<FProcMeshTangent>(),false,false);
 }
 
-void AppendSphereTriangle(FSkyMesh& Mesh, const FVector& A, const FVector& B,
-    const FVector& C, const float Radius)
-{
-    const int32 First = Mesh.Vertices.Num();
-    for (const FVector& Normal : {A,B,C})
-    {
-        Mesh.Vertices.Add(Normal*Radius);
-        Mesh.Normals.Add(Normal);
-        Mesh.UVs.Add(FVector2D::ZeroVector);
-        Mesh.Colors.Add(FLinearColor::White);
-    }
-    Mesh.Indices.Append({First,First+1,First+2});
-}
-
 void AppendBox(FSkyMesh& Mesh, const FVector& HalfExtent,
     const FLinearColor& Color)
 {
@@ -220,67 +206,83 @@ void ASandLunarSkyActor::BuildEarth()
     const USandLevelSettings* Settings = GetDefault<USandLevelSettings>();
     const float Radius = CelestialRadiusCentimeters*FMath::Tan(
         0.5f*FMath::DegreesToRadians(Settings->LunarEarthAngularDiameterDegrees));
-    constexpr int32 LatitudeSegments = 36;
-    constexpr int32 LongitudeSegments = 72;
-    TStaticArray<FSkyMesh,5> Sections;
+    constexpr int32 LatitudeSegments = 64;
+    constexpr int32 LongitudeSegments = 128;
+    FSkyMesh Mesh;
+    Mesh.Vertices.Reserve((LatitudeSegments+1)*(LongitudeSegments+1));
+    Mesh.Normals.Reserve((LatitudeSegments+1)*(LongitudeSegments+1));
+    Mesh.UVs.Reserve((LatitudeSegments+1)*(LongitudeSegments+1));
+    Mesh.Colors.Reserve((LatitudeSegments+1)*(LongitudeSegments+1));
+    Mesh.Indices.Reserve(LatitudeSegments*LongitudeSegments*6);
+    const FVector DirectionToEarth = EarthDirection.GetSafeNormal();
+    for (int32 LatitudeIndex = 0; LatitudeIndex <= LatitudeSegments; ++LatitudeIndex)
+    {
+        const float Latitude = -0.5f*PI+PI*LatitudeIndex/LatitudeSegments;
+        for (int32 LongitudeIndex = 0; LongitudeIndex <= LongitudeSegments; ++LongitudeIndex)
+        {
+            const float Longitude = 2.0f*PI*LongitudeIndex/LongitudeSegments;
+            const FVector Normal(
+                FMath::Cos(Latitude)*FMath::Cos(Longitude),
+                FMath::Cos(Latitude)*FMath::Sin(Longitude),
+                FMath::Sin(Latitude));
+            const FVector Geography = FRotator(-11.0f,31.0f,7.0f).RotateVector(Normal);
+            const float ContinentalNoise =
+                0.58f*FMath::PerlinNoise3D(Geography*1.45f+FVector(1.3f,-2.1f,0.7f))+
+                0.29f*FMath::PerlinNoise3D(Geography*3.25f+FVector(-3.7f,0.4f,2.2f))+
+                0.13f*FMath::PerlinNoise3D(Geography*7.4f+FVector(0.8f,4.1f,-1.6f));
+            const float LandMask = FMath::SmoothStep(-0.035f,0.16f,ContinentalNoise)*
+                (1.0f-FMath::SmoothStep(1.24f,1.48f,FMath::Abs(Latitude)));
+            const float OceanVariation = FMath::Clamp(0.50f+0.50f*
+                FMath::PerlinNoise3D(Geography*5.0f),0.0f,1.0f);
+            const FLinearColor Ocean = FMath::Lerp(
+                FLinearColor(0.004f,0.025f,0.105f),
+                FLinearColor(0.012f,0.105f,0.30f),OceanVariation);
+            const float Dryness = FMath::Clamp(
+                0.22f+0.60f*FMath::Abs(FMath::Sin(2.2f*Latitude))+
+                0.20f*FMath::PerlinNoise3D(Geography*4.0f+FVector(2.0f)),
+                0.0f,1.0f);
+            const FLinearColor Land = FMath::Lerp(
+                FLinearColor(0.035f,0.13f,0.045f),
+                FLinearColor(0.30f,0.21f,0.095f),Dryness);
+            FLinearColor Surface = FMath::Lerp(Ocean,Land,LandMask);
+            const float IceMask = FMath::SmoothStep(1.12f,1.43f,FMath::Abs(Latitude));
+            Surface = FMath::Lerp(Surface,FLinearColor(0.61f,0.70f,0.80f),IceMask);
+            const float CloudField = 0.5f+0.5f*(
+                0.78f*FMath::PerlinNoise3D(Geography*4.6f+FVector(-1.0f,2.0f,4.0f))+
+                0.22f*FMath::PerlinNoise3D(Geography*9.5f));
+            const float CloudMask = FMath::SmoothStep(0.61f,0.80f,CloudField)*
+                (1.0f-0.35f*IceMask);
+            Surface = FMath::Lerp(Surface,FLinearColor(0.72f,0.77f,0.84f),
+                0.52f*CloudMask);
+            const float Daylight = FMath::SmoothStep(-0.09f,0.22f,
+                static_cast<float>(FVector::DotProduct(Normal,SunDirection)));
+            Surface *= 0.018f+0.982f*FMath::Pow(Daylight,0.68f);
+            const float ViewFacing = FMath::Max(0.0f,
+                static_cast<float>(FVector::DotProduct(Normal,-DirectionToEarth)));
+            const float AtmosphereRim = FMath::Pow(1.0f-ViewFacing,3.2f)*
+                FMath::Sqrt(Daylight);
+            Surface += FLinearColor(0.025f,0.16f,0.72f)*AtmosphereRim*0.38f;
+            Surface.A = 1.0f;
+            Mesh.Vertices.Add(Normal*Radius);
+            Mesh.Normals.Add(Normal);
+            Mesh.UVs.Add(FVector2D(
+                static_cast<float>(LongitudeIndex)/LongitudeSegments,
+                static_cast<float>(LatitudeIndex)/LatitudeSegments));
+            Mesh.Colors.Add(Surface);
+        }
+    }
     for (int32 LatitudeIndex = 0; LatitudeIndex < LatitudeSegments; ++LatitudeIndex)
     {
-        const float Latitude0 = -0.5f*PI+PI*LatitudeIndex/LatitudeSegments;
-        const float Latitude1 = -0.5f*PI+PI*(LatitudeIndex+1)/LatitudeSegments;
         for (int32 LongitudeIndex = 0; LongitudeIndex < LongitudeSegments; ++LongitudeIndex)
         {
-            const float Longitude0 = 2.0f*PI*LongitudeIndex/LongitudeSegments;
-            const float Longitude1 = 2.0f*PI*(LongitudeIndex+1)/LongitudeSegments;
-            const auto NormalAt = [](const float Latitude, const float Longitude)
-            {
-                return FVector(FMath::Cos(Latitude)*FMath::Cos(Longitude),
-                    FMath::Cos(Latitude)*FMath::Sin(Longitude),FMath::Sin(Latitude));
-            };
-            const FVector A = NormalAt(Latitude0,Longitude0);
-            const FVector B = NormalAt(Latitude1,Longitude0);
-            const FVector C = NormalAt(Latitude0,Longitude1);
-            const FVector D = NormalAt(Latitude1,Longitude1);
-            const FVector Normal = (A+B+C+D).GetSafeNormal();
-            const float Latitude = FMath::Asin(Normal.Z);
-            const float Longitude = FMath::Atan2(Normal.Y,Normal.X);
-            const float ContinentalNoise =
-                0.65f*FMath::PerlinNoise2D(FVector2D(Longitude*0.85f,Latitude*1.65f))+
-                0.35f*FMath::PerlinNoise2D(FVector2D(Longitude*2.2f+4.1f,Latitude*3.7f));
-            const bool bLand = ContinentalNoise > 0.10f && FMath::Abs(Latitude) < 1.32f;
-            const float CloudNoise = FMath::PerlinNoise2D(
-                FVector2D(Longitude*3.1f-2.3f,Latitude*5.2f+0.7f));
-            const float Daylight = FMath::Max(0.0f,
-                static_cast<float>(FVector::DotProduct(Normal,SunDirection)));
-            int32 Section = 0;
-            if (Daylight >= 0.06f)
-            {
-                if (FMath::Abs(Latitude) > 1.20f || CloudNoise > 0.40f)
-                {
-                    Section = 4;
-                }
-                else if (!bLand)
-                {
-                    Section = 1;
-                }
-                else
-                {
-                    Section = Normal.Z > 0.0f ? 2 : 3;
-                }
-            }
-            AppendSphereTriangle(Sections[Section],A,B,C,Radius);
-            AppendSphereTriangle(Sections[Section],C,B,D,Radius);
+            const int32 A = LatitudeIndex*(LongitudeSegments+1)+LongitudeIndex;
+            const int32 B = A+LongitudeSegments+1;
+            Mesh.Indices.Append({A,B,A+1,A+1,B,B+1});
         }
     }
     EarthMesh->SetRelativeLocation(EarthDirection.GetSafeNormal()*CelestialRadiusCentimeters);
-    const FLinearColor Tints[5] = {
-        FLinearColor(0.001f,0.003f,0.008f),FLinearColor(0.018f,0.16f,0.48f),
-        FLinearColor(0.12f,0.34f,0.09f),FLinearColor(0.38f,0.22f,0.07f),
-        FLinearColor(0.78f,0.88f,1.0f)};
-    for (int32 Section = 0; Section < 5; ++Section)
-    {
-        UploadSkyMesh(EarthMesh,MoveTemp(Sections[Section]),Section);
-        EarthMesh->SetMaterial(Section,MakeCelestialMaterial(Tints[Section],75000.0f));
-    }
+    UploadSkyMesh(EarthMesh,MoveTemp(Mesh));
+    EarthMesh->SetMaterial(0,MakeCelestialMaterial(FLinearColor::White,46000.0f));
 }
 
 void ASandLunarSkyActor::BuildSun()
@@ -318,7 +320,7 @@ void ASandLunarSkyActor::BuildSun()
     }
     SunMesh->SetRelativeLocation(SunDirection*CelestialRadiusCentimeters);
     UploadSkyMesh(SunMesh,MoveTemp(Mesh));
-    SunMesh->SetMaterial(0,MakeCelestialMaterial(FLinearColor(1.0f,0.72f,0.28f),1500000.0f));
+    SunMesh->SetMaterial(0,MakeCelestialMaterial(FLinearColor::White,1500000.0f));
 }
 
 void ASandLunarSkyActor::BuildStars()
@@ -366,7 +368,7 @@ void ASandLunarSkyActor::BuildStars()
         AppendStar(Mesh,Direction.GetSafeNormal(),AngularSize,Color);
     }
     UploadSkyMesh(StarMesh,MoveTemp(Mesh));
-    StarMesh->SetMaterial(0,MakeCelestialMaterial(FLinearColor(0.72f,0.82f,1.0f),350000.0f));
+    StarMesh->SetMaterial(0,MakeCelestialMaterial(FLinearColor::White,350000.0f));
 }
 
 void ASandLunarSkyActor::BuildSatellite()

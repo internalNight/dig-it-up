@@ -45,12 +45,20 @@ celestial.set_editor_property("two_sided", True)
 tint = expression(celestial, unreal.MaterialExpressionVectorParameter, -280, -40)
 tint.set_editor_property("parameter_name", "Tint")
 tint.set_editor_property("default_value", unreal.LinearColor(1.0, 1.0, 1.0, 1.0))
+celestial_vertex = expression(celestial, unreal.MaterialExpressionVertexColor, -280, -170)
+vertex_tint = expression(celestial, unreal.MaterialExpressionMultiply, -70, -80)
+unreal.MaterialEditingLibrary.connect_material_expressions(
+    celestial_vertex, "", vertex_tint, "A"
+)
+unreal.MaterialEditingLibrary.connect_material_expressions(
+    tint, "", vertex_tint, "B"
+)
 emission_gain = expression(celestial, unreal.MaterialExpressionScalarParameter, -280, 100)
 emission_gain.set_editor_property("parameter_name", "ExposureGain")
 emission_gain.set_editor_property("default_value", 140.0)
 emission = expression(celestial, unreal.MaterialExpressionMultiply, -40, 20)
 unreal.MaterialEditingLibrary.connect_material_expressions(
-    tint, "", emission, "A"
+    vertex_tint, "", emission, "A"
 )
 unreal.MaterialEditingLibrary.connect_material_expressions(
     emission_gain, "", emission, "B"
@@ -61,7 +69,7 @@ unreal.MaterialEditingLibrary.connect_material_property(
 unreal.MaterialEditingLibrary.layout_material_expressions(celestial)
 unreal.MaterialEditingLibrary.recompile_material(celestial)
 unreal.EditorAssetLibrary.save_loaded_asset(celestial, only_if_is_dirty=False)
-unreal.log("Created M_LunarCelestial: unlit, two-sided, parameterized emissive")
+unreal.log("Created M_LunarCelestial: unlit, two-sided, vertex-colour emissive")
 
 
 rock = make_material("M_LunarRock")
