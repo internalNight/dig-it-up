@@ -138,8 +138,8 @@ functional transport does not establish real-machine performance.
 - No visible retaining walls in the lunar profile; the upper boundary remains open
 - Nominal 1.2 m granular depth with local highland and crater relief
 - 10 cm dense full-volume physics cells by default (about 265,000 points initially)
-- 12 cm independent surface-reconstruction voxels
-- 30 Hz outer physics, 240 Hz internal MPM steps, 60 FPS game target and 15 Hz asynchronous bulk-surface requests
+- 10 cm independent surface-reconstruction voxels
+- 30 Hz outer physics, 180 Hz internal MPM steps in the main desktop launcher, 60 FPS game target and 15 Hz asynchronous bulk-surface requests
 - One solver step per submitted lunar GPU job to avoid burst catch-up hitches
 - RTX 4070 Laptop 8 GB development target
 - Single player, one dry-sand material, no open world or networking
@@ -148,10 +148,12 @@ See `Docs/Architecture.md` and `Docs/FirstPlayable.md` before changing solver sc
 
 ## Play the current build
 
-Double-click `PlaySandPreview.cmd`. It prefers the packaged build at
-`Builds/DigItUpVisual_20260909/SandExcavator.exe` (with the older first playable
-retained as a fallback), so UE Editor does not need to be open.
-Close UE Editor first on a 16 GB machine to avoid several gigabytes of avoidable memory use.
+Double-click `PlayLunarWorld.cmd` for the current packaged lunar scene (with a
+source-built editor fallback).
+`PlayLunarWorldSmooth.cmd` selects the coarser 12.5 cm physics profile when
+frame pacing matters more than small-scale soil response. The display mesh
+remains 10 cm in both. See `Docs/DesktopPerformanceDetail.md` for measurements.
+`PlaySandPreview.cmd` still launches an older packaged Easy-level build.
 
 The in-game HUD shows live speed, the number of supported track sampling points,
 and every control. **W/S** drive, **A/D** steer, **Space** brakes, **Q/E** controls

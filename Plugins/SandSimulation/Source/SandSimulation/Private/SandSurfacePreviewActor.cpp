@@ -190,50 +190,64 @@ TArray<uint32> SmoothDensityField(
     TArray<uint32> Current = FixedDensity;
     TArray<uint32> Filtered;
     Filtered.SetNumUninitialized(FixedDensity.Num());
+    TArray<uint64> Horizontal;
+    TArray<uint64> Planar;
+    Horizontal.SetNumUninitialized(FixedDensity.Num());
+    Planar.SetNumUninitialized(FixedDensity.Num());
+
+    const int32 Width = Field.Resolution.X;
+    const int32 Height = Field.Resolution.Y;
+    const int32 Depth = Field.Resolution.Z;
+    const int32 PlaneSize = Width * Height;
 
     for (int32 Pass = 0; Pass < PassCount; ++Pass)
     {
-        for (int32 Z = 0; Z < Field.Resolution.Z; ++Z)
+        // [1, 2, 1] in each axis is exactly the previous 27-tap kernel.
+        // Delay division until the final pass so the boundary normalization
+        // and integer rounding remain identical.
+        for (int32 Z = 0; Z < Depth; ++Z)
         {
-            for (int32 Y = 0; Y < Field.Resolution.Y; ++Y)
+            for (int32 Y = 0; Y < Height; ++Y)
             {
-                for (int32 X = 0; X < Field.Resolution.X; ++X)
+                const int32 Row = (Z * Height + Y) * Width;
+                for (int32 X = 0; X < Width; ++X)
                 {
-                    uint64 WeightedDensity = 0;
-                    uint32 TotalWeight = 0;
-                    for (int32 OffsetZ = -1; OffsetZ <= 1; ++OffsetZ)
-                    {
-                        const int32 SampleZ = Z + OffsetZ;
-                        if (SampleZ < 0 || SampleZ >= Field.Resolution.Z)
-                        {
-                            continue;
-                        }
-                        for (int32 OffsetY = -1; OffsetY <= 1; ++OffsetY)
-                        {
-                            const int32 SampleY = Y + OffsetY;
-                            if (SampleY < 0 || SampleY >= Field.Resolution.Y)
-                            {
-                                continue;
-                            }
-                            for (int32 OffsetX = -1; OffsetX <= 1; ++OffsetX)
-                            {
-                                const int32 SampleX = X + OffsetX;
-                                if (SampleX < 0 || SampleX >= Field.Resolution.X)
-                                {
-                                    continue;
-                                }
-                                const uint32 Weight =
-                                    (OffsetX == 0 ? 2u : 1u) *
-                                    (OffsetY == 0 ? 2u : 1u) *
-                                    (OffsetZ == 0 ? 2u : 1u);
-                                WeightedDensity += static_cast<uint64>(Current[FlattenNode(
-                                    FIntVector(SampleX, SampleY, SampleZ), Field.Resolution)]) * Weight;
-                                TotalWeight += Weight;
-                            }
-                        }
-                    }
-                    Filtered[FlattenNode(FIntVector(X, Y, Z), Field.Resolution)] =
-                        static_cast<uint32>(WeightedDensity / TotalWeight);
+                    const int32 Index = Row + X;
+                    Horizontal[Index] = 2ull * Current[Index]
+                        + (X > 0 ? Current[Index - 1] : 0u)
+                        + (X + 1 < Width ? Current[Index + 1] : 0u);
+                }
+            }
+        }
+        for (int32 Z = 0; Z < Depth; ++Z)
+        {
+            for (int32 Y = 0; Y < Height; ++Y)
+            {
+                const int32 Row = (Z * Height + Y) * Width;
+                for (int32 X = 0; X < Width; ++X)
+                {
+                    const int32 Index = Row + X;
+                    Planar[Index] = 2ull * Horizontal[Index]
+                        + (Y > 0 ? Horizontal[Index - Width] : 0ull)
+                        + (Y + 1 < Height ? Horizontal[Index + Width] : 0ull);
+                }
+            }
+        }
+        for (int32 Z = 0; Z < Depth; ++Z)
+        {
+            for (int32 Y = 0; Y < Height; ++Y)
+            {
+                const int32 Row = (Z * Height + Y) * Width;
+                const uint32 WeightY = 2u + (Y > 0 ? 1u : 0u) + (Y + 1 < Height ? 1u : 0u);
+                const uint32 WeightZ = 2u + (Z > 0 ? 1u : 0u) + (Z + 1 < Depth ? 1u : 0u);
+                for (int32 X = 0; X < Width; ++X)
+                {
+                    const int32 Index = Row + X;
+                    const uint64 Sum = 2ull * Planar[Index]
+                        + (Z > 0 ? Planar[Index - PlaneSize] : 0ull)
+                        + (Z + 1 < Depth ? Planar[Index + PlaneSize] : 0ull);
+                    const uint32 WeightX = 2u + (X > 0 ? 1u : 0u) + (X + 1 < Width ? 1u : 0u);
+                    Filtered[Index] = static_cast<uint32>(Sum / (WeightX * WeightY * WeightZ));
                 }
             }
         }
@@ -338,25 +352,40 @@ FSurfaceMeshData BuildSurfaceMesh(
     MarchingCubes.Generate();
 
     constexpr double UnrealUnitsPerMeter = 100.0;
+    TArray<FVector3f> AccumulatedNormals;
+    AccumulatedNormals.Init(FVector3f::ZeroVector, MarchingCubes.Vertices.Num());
+    for (const UE::Geometry::FIndex3i& Triangle : MarchingCubes.Triangles)
+    {
+        const FVector3f A(MarchingCubes.Vertices[Triangle.A]);
+        const FVector3f B(MarchingCubes.Vertices[Triangle.B]);
+        const FVector3f C(MarchingCubes.Vertices[Triangle.C]);
+        const FVector3f AreaNormal = FVector3f::CrossProduct(B - A, C - A);
+        AccumulatedNormals[Triangle.A] += AreaNormal;
+        AccumulatedNormals[Triangle.B] += AreaNormal;
+        AccumulatedNormals[Triangle.C] += AreaNormal;
+    }
     FSurfaceMeshData Mesh;
     Mesh.Vertices.Reserve(MarchingCubes.Vertices.Num());
     Mesh.Normals.Reserve(MarchingCubes.Vertices.Num());
     Mesh.UVs.Reserve(MarchingCubes.Vertices.Num());
     Mesh.Colors.Reserve(MarchingCubes.Vertices.Num());
-    for (const FVector3d& Vertex : MarchingCubes.Vertices)
+    for (int32 VertexIndex = 0; VertexIndex < MarchingCubes.Vertices.Num(); ++VertexIndex)
     {
+        const FVector3d& Vertex = MarchingCubes.Vertices[VertexIndex];
         const FVector3f PositionMeters(Vertex);
-        const float GradientStep = Field.VoxelSizeMeters;
-        FVector3f OutwardNormal(
-            SampleDensityMeters(SmoothedDensity, Field, PositionMeters - FVector3f(GradientStep, 0.0f, 0.0f)) -
-                SampleDensityMeters(SmoothedDensity, Field, PositionMeters + FVector3f(GradientStep, 0.0f, 0.0f)),
-            SampleDensityMeters(SmoothedDensity, Field, PositionMeters - FVector3f(0.0f, GradientStep, 0.0f)) -
-                SampleDensityMeters(SmoothedDensity, Field, PositionMeters + FVector3f(0.0f, GradientStep, 0.0f)),
-            SampleDensityMeters(SmoothedDensity, Field, PositionMeters - FVector3f(0.0f, 0.0f, GradientStep)) -
-                SampleDensityMeters(SmoothedDensity, Field, PositionMeters + FVector3f(0.0f, 0.0f, GradientStep)));
+        // Marching-cubes triangles wind inward in this field convention.
+        FVector3f OutwardNormal = -AccumulatedNormals[VertexIndex];
         if (!OutwardNormal.Normalize())
         {
-            OutwardNormal = FVector3f::UpVector;
+            const float GradientStep = Field.VoxelSizeMeters;
+            OutwardNormal = FVector3f(
+                SampleDensityMeters(SmoothedDensity, Field, PositionMeters - FVector3f(GradientStep, 0.0f, 0.0f)) -
+                    SampleDensityMeters(SmoothedDensity, Field, PositionMeters + FVector3f(GradientStep, 0.0f, 0.0f)),
+                SampleDensityMeters(SmoothedDensity, Field, PositionMeters - FVector3f(0.0f, GradientStep, 0.0f)) -
+                    SampleDensityMeters(SmoothedDensity, Field, PositionMeters + FVector3f(0.0f, GradientStep, 0.0f)),
+                SampleDensityMeters(SmoothedDensity, Field, PositionMeters - FVector3f(0.0f, 0.0f, GradientStep)) -
+                    SampleDensityMeters(SmoothedDensity, Field, PositionMeters + FVector3f(0.0f, 0.0f, GradientStep)));
+            if (!OutwardNormal.Normalize()) OutwardNormal = FVector3f::UpVector;
         }
         // Keep the bulk shape tied to the MPM density while restoring a small,
         // deterministic granular scale that the 5 cm extraction grid cannot
@@ -622,6 +651,7 @@ bool ASandSurfacePreviewActor::GenerateSurfaceFromParticlePositions(
                                 return;
                             }
                             WeakThis->bSurfaceBuildInFlight = false;
+                            const double UploadStartSeconds = FPlatformTime::Seconds();
                             WeakThis->SurfaceMesh->CreateMeshSection_LinearColor(
                                 0,
                                 Mesh.Vertices,
@@ -632,7 +662,9 @@ bool ASandSurfacePreviewActor::GenerateSurfaceFromParticlePositions(
                                 TArray<FProcMeshTangent>(),
                                 false,
                                 false);
+                            const double UploadSeconds = FPlatformTime::Seconds() - UploadStartSeconds;
                             WeakThis->OnSurfaceMeshUpdated(Mesh.Vertices, Mesh.Indices);
+                            const double SupportSeconds = FPlatformTime::Seconds() - UploadStartSeconds - UploadSeconds;
                             const double TotalSeconds = FPlatformTime::Seconds() - RequestStartSeconds;
                             WeakThis->LastSurfaceBuildMilliseconds =
                                 static_cast<float>(TotalSeconds * 1000.0);
@@ -646,7 +678,7 @@ bool ASandSurfacePreviewActor::GenerateSurfaceFromParticlePositions(
                             if (WeakThis->CompletedBuildCount == 1 || WeakThis->CompletedBuildCount % 60 == 0)
                             {
                                 UE_LOG(LogTemp, Display,
-                                    TEXT("Sand surface frame %llu: %d particles, %d nodes (%.2f MB), %d geometric/%d raster triangles, mesh %.2f MB; density %.1f ms, mesh %.1f ms, total %.1f ms"),
+                                    TEXT("Sand surface frame %llu: %d particles, %d nodes (%.2f MB), %d geometric/%d raster triangles, mesh %.2f MB; density %.1f ms, mesh %.1f ms, upload %.1f ms, support %.1f ms, total %.1f ms"),
                                     WeakThis->CompletedBuildCount,
                                     ParticleCount,
                                     Field.NodeCount(),
@@ -656,6 +688,8 @@ bool ASandSurfacePreviewActor::GenerateSurfaceFromParticlePositions(
                                     MeshMegabytes,
                                     DensitySeconds * 1000.0,
                                     MeshSeconds * 1000.0,
+                                    UploadSeconds * 1000.0,
+                                    SupportSeconds * 1000.0,
                                     TotalSeconds * 1000.0);
                             }
 
@@ -765,6 +799,45 @@ bool FSandSurfaceReconstructionTest::RunTest(const FString& Parameters)
     Field.VoxelSizeMeters = 0.025f;
     Field.KernelRadiusMeters = 0.055f;
     Field.IsoDensity = 0.85f;
+    FDensityFieldDescription FilterField = Field;
+    FilterField.Resolution = FIntVector(7, 6, 5);
+    TArray<uint32> FilterInput;
+    FilterInput.SetNumUninitialized(FilterField.NodeCount());
+    for (int32 Index = 0; Index < FilterInput.Num(); ++Index)
+    {
+        FilterInput[Index] = static_cast<uint32>((Index * 37 + Index / 3) % 1009);
+    }
+    const TArray<uint32> FilterOutput = SmoothDensityField(FilterInput, FilterField);
+    bool bFilterMatchesReference = true;
+    for (int32 Z = 0; Z < FilterField.Resolution.Z; ++Z)
+    for (int32 Y = 0; Y < FilterField.Resolution.Y; ++Y)
+    for (int32 X = 0; X < FilterField.Resolution.X; ++X)
+    {
+        uint64 Sum = 0;
+        uint32 WeightSum = 0;
+        for (int32 DZ = -1; DZ <= 1; ++DZ)
+        for (int32 DY = -1; DY <= 1; ++DY)
+        for (int32 DX = -1; DX <= 1; ++DX)
+        {
+            const FIntVector Sample(X + DX, Y + DY, Z + DZ);
+            if (Sample.X < 0 || Sample.Y < 0 || Sample.Z < 0 ||
+                Sample.X >= FilterField.Resolution.X ||
+                Sample.Y >= FilterField.Resolution.Y ||
+                Sample.Z >= FilterField.Resolution.Z)
+            {
+                continue;
+            }
+            const uint32 Weight = (DX == 0 ? 2u : 1u) *
+                (DY == 0 ? 2u : 1u) * (DZ == 0 ? 2u : 1u);
+            Sum += static_cast<uint64>(FilterInput[
+                FlattenNode(Sample, FilterField.Resolution)]) * Weight;
+            WeightSum += Weight;
+        }
+        bFilterMatchesReference &= FilterOutput[
+            FlattenNode(FIntVector(X, Y, Z), FilterField.Resolution)] == Sum / WeightSum;
+    }
+    TestTrue(TEXT("Separable density filter matches 27-tap reference at edges and interior"),
+        bFilterMatchesReference);
     TArray<FSandDensityParticleData> Particles = MakePreviewPile(0.05f);
     TArray<uint32> FixedDensity;
     FixedDensity.SetNumZeroed(Field.NodeCount());
@@ -814,6 +887,19 @@ bool FSandSurfaceReconstructionTest::RunTest(const FString& Parameters)
     TestTrue(TEXT("Marching cubes reuses shared surface vertices"), Mesh.Vertices.Num() < Mesh.Indices.Num());
     TestTrue(TEXT("Every surface index addresses a generated vertex"), bAllIndicesValid);
     TestTrue(TEXT("Extracted surface vertices remain finite"), bAllVerticesFinite);
+    if (!Mesh.Vertices.IsEmpty())
+    {
+        int32 HighestVertex = 0;
+        for (int32 Index = 1; Index < Mesh.Vertices.Num(); ++Index)
+        {
+            if (Mesh.Vertices[Index].Z > Mesh.Vertices[HighestVertex].Z)
+            {
+                HighestVertex = Index;
+            }
+        }
+        TestTrue(TEXT("Top surface normals face away from the sand"),
+            Mesh.Normals[HighestVertex].Z > 0.2);
+    }
     return true;
 }
 

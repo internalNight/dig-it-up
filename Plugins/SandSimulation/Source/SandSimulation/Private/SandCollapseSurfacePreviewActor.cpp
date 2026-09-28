@@ -331,10 +331,9 @@ void ASandCollapseSurfacePreviewActor::BeginPlay()
         SupportHeightGridSize.X * SupportHeightGridSize.Y);
     if (SimulationState->PhysicalMaximum.X - SimulationState->PhysicalMinimum.X > 8.0f)
     {
-        // The 15 m lunar window uses a 10 cm physical grid by default. A
-        // 12 cm display grid keeps async surface work near the former 10 m
-        // cost while the physical window grows by 2.25x in plan area.
-        VoxelSizeMeters = 0.12f;
+        // Resolve the live surface at the 10 cm MPM spacing. Material normals
+        // and deterministic small-scale shading provide finer appearance.
+        VoxelSizeMeters = 0.10f;
         KernelRadiusMeters = 0.18f;
         // The finite MPM volume is visually continued by the transition mesh.
         // Its closed marching-cubes side faces must not cast a square shadow.
@@ -676,8 +675,8 @@ void ASandCollapseSurfacePreviewActor::Tick(const float DeltaSeconds)
     // previous GPU density readback, CPU extraction and upload complete.
     // Slow devices naturally skip busy frames without paying for a particle
     // readback whose data would otherwise be discarded.
-    const uint32 SurfaceStride = SimulationState->CellSize >= 0.099f
-        ? 1u : (bExpandedLunarPatch ? 2u :
+    const uint32 SurfaceStride = bExpandedLunarPatch
+        ? 2u : (SimulationState->CellSize >= 0.099f ? 1u :
             static_cast<uint32>(FMath::RoundToInt(0.1f / FixedFrameSeconds)));
     const bool bRefreshSurface = !IsSurfaceBuildInFlight() &&
         CompletedSimulationFrames + FramesToAdvance >= LastSurfaceSampleFrame + SurfaceStride;

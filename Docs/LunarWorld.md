@@ -218,7 +218,11 @@ and excavation objective and needs a separate tuning/validation pass.
 
 ## Run and fallback
 
-Double-click `PlayLunarWorld.cmd` for the source-built lunar scene. The game still
+Double-click `PlayLunarWorld.cmd` for the 10 cm physics / 10 cm display desktop
+scene. `PlayLunarWorldSmooth.cmd` uses 12.5 cm physics with the same 10 cm
+display mesh when a steadier frame rate matters more than small-scale soil
+response. See `Docs/DesktopPerformanceDetail.md` for measurements and limits.
+The game still
 uses W/S, A/D, Space, Q/E, R/F and T/G for the excavator. Use the **arrow keys**
 to orbit, **C** to switch between close excavation and regional overview, and
 **V** to display the golden specimen bearing for five seconds. Travel toward the

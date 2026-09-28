@@ -334,6 +334,7 @@ TSharedRef<FRuntimeSimulationState, ESPMode::ThreadSafe> CreateRuntimeSandboxSim
 #endif
     if (Quality == TEXT("Legacy")) State->CellSize = 0.0625f;
     if (Quality == TEXT("Mobile")) State->CellSize = 0.10f;
+    if (Quality == TEXT("DesktopSmooth")) State->CellSize = 0.125f;
     if (Quality == TEXT("Fine")) State->CellSize = 0.03125f;
     if (Quality == TEXT("Ultra")) State->CellSize = 0.025f;
     const bool bBench = FParse::Param(FCommandLine::Get(), TEXT("SandRoadheaderBench"));
@@ -354,7 +355,7 @@ TSharedRef<FRuntimeSimulationState, ESPMode::ThreadSafe> CreateRuntimeSandboxSim
     }
     if (bBench && Quality.IsEmpty()) State->CellSize = 0.025f;
     State->InternalDeltaSeconds = 1.0f / (State->CellSize <= 0.025f ? 1200.0f : State->CellSize <= 0.03125f ? 900.0f : State->CellSize <= 0.05f ? 600.0f : 300.0f);
-    if (Quality == TEXT("Mobile"))
+    if (Quality == TEXT("Mobile") || Quality == TEXT("DesktopSmooth"))
     {
         // Eight internal steps per 30 Hz coupling frame save two full
         // particle/grid passes while retaining the same physical outer step.
