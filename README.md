@@ -1,5 +1,13 @@
 # Dig It Up
 
+## Desktop update (2026-10-07)
+
+The lunar surface now reads GPU density through a polled fence instead of
+blocking the render thread until the GPU is idle. Both lunar launchers prefer
+`Builds/DesktopAsync_20261007/Windows` when available. The 10 cm main profile,
+12.5 cm smooth profile and their solver settings are unchanged. See
+[current validation, measurements and next targets](Docs/DesktopAsyncReadback.md).
+
 ## Lunar field (2026-09-20)
 
 The default source-built scene is now a lunar excavation field: a **100 x 100 m
@@ -87,8 +95,9 @@ UE project/module name remains `SandExcavator`.
 The original portable Easy build has 1.5 m of active sand, 6.25 cm physical spacing, 4 cm
 surface reconstruction, silver-grey material and an 85-degree boom raise limit.
 It requires Windows x64 and a DX12/SM6-capable GPU. There is no terrain save/load.
-Only an RTX 4070 Laptop / 16 GB system has been tested; framerates are targets, not
-guarantees. See [visual update](Docs/VisualPolish.md) and
+Current desktop checks use an RTX 4060 Ti 8 GB / 32 GB system, with earlier
+baseline measurements on an RTX 4070 Laptop / 16 GB system; framerates are
+targets, not guarantees. See [visual update](Docs/VisualPolish.md) and
 [portable distribution notes](Docs/PortableRelease.md). No open-source license is
 granted by this upload; Unreal Engine and third-party components keep their own terms.
 

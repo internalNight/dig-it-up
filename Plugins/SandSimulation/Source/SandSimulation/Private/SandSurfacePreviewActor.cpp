@@ -23,6 +23,37 @@
 #include "RHIGPUReadback.h"
 #include "ShaderParameterStruct.h"
 #include "UnrealClient.h"
+#include <atomic>
+
+// RHI resources and completion are used only on the render thread. Atomics
+// bound polling to one queued command and publish completion to the game thread.
+struct FSandSurfaceReadbackRequest
+{
+    TUniquePtr<FRHIGPUBufferReadback> Readback;
+    TFunction<void(TArray<uint32>&&)> OnReady;
+    int32 NodeCount = 0;
+    std::atomic<bool> bPollQueued{false};
+    std::atomic<bool> bComplete{false};
+
+    void Poll()
+    {
+        check(IsInRenderingThread());
+        if (Readback && Readback->IsReady())
+        {
+            TArray<uint32> FixedDensity;
+            FixedDensity.SetNumUninitialized(NodeCount);
+            const uint32 NumBytes = FixedDensity.Num() * sizeof(uint32);
+            const void* Source = Readback->Lock(NumBytes);
+            FMemory::Memcpy(FixedDensity.GetData(), Source, NumBytes);
+            Readback->Unlock();
+            Readback.Reset();
+            OnReady(MoveTemp(FixedDensity));
+            OnReady = nullptr;
+            bComplete.store(true);
+        }
+        bPollQueued.store(false);
+    }
+};
 
 namespace Sand::Surface
 {
@@ -514,7 +545,8 @@ void AddDensityPass(
 
 ASandSurfacePreviewActor::ASandSurfacePreviewActor()
 {
-    PrimaryActorTick.bCanEverTick = false;
+    PrimaryActorTick.bCanEverTick = true;
+    bAllowTickBeforeBeginPlay = true;
     SurfaceMesh = CreateDefaultSubobject<UProceduralMeshComponent>(TEXT("SurfaceMesh"));
     SetRootComponent(SurfaceMesh);
     SurfaceMesh->SetCollisionEnabled(ECollisionEnabled::NoCollision);
@@ -526,6 +558,64 @@ ASandSurfacePreviewActor::ASandSurfacePreviewActor()
     {
         SurfaceMesh->SetMaterial(0, VertexColorMaterial.Object);
     }
+}
+
+void ASandSurfacePreviewActor::Tick(float DeltaSeconds)
+{
+    Super::Tick(DeltaSeconds);
+    if (!PendingDensityReadback)
+    {
+        return;
+    }
+    if (PendingDensityReadback->bComplete.load())
+    {
+        PendingDensityReadback.Reset();
+        return;
+    }
+    if (PendingDensityReadback->bPollQueued.exchange(true))
+    {
+        return;
+    }
+    ENQUEUE_RENDER_COMMAND(SandPollSurfaceDensity)(
+        [Request = PendingDensityReadback](FRHICommandListImmediate&)
+        {
+            Request->Poll();
+        });
+}
+
+bool ASandSurfacePreviewActor::ShouldTickIfViewportsOnly() const
+{
+    return PendingDensityReadback.IsValid();
+}
+
+void ASandSurfacePreviewActor::CancelPendingSurfaceBuild()
+{
+    ++BuildGeneration;
+    bSurfaceBuildInFlight = false;
+    if (PendingDensityReadback)
+    {
+        // Queue after any submitted polls; release staging resources on their
+        // owning thread even if the actor exits before the GPU copy finishes.
+        ENQUEUE_RENDER_COMMAND(SandReleaseSurfaceDensity)(
+            [Request = MoveTemp(PendingDensityReadback)](FRHICommandListImmediate&)
+            {
+                Request->Readback.Reset();
+                Request->OnReady = nullptr;
+                Request->bComplete.store(true);
+            });
+    }
+}
+
+void ASandSurfacePreviewActor::EndPlay(const EEndPlayReason::Type EndPlayReason)
+{
+    CancelPendingSurfaceBuild();
+    Super::EndPlay(EndPlayReason);
+}
+
+void ASandSurfacePreviewActor::BeginDestroy()
+{
+    CancelPendingSurfaceBuild();
+    Super::BeginDestroy();
 }
 
 void ASandSurfacePreviewActor::BeginPlay()
@@ -602,10 +692,12 @@ bool ASandSurfacePreviewActor::GenerateSurfaceFromParticlePositions(
         !FParse::Param(FCommandLine::Get(), TEXT("SandSlopeCoastTest"));
     const double RequestStartSeconds = FPlatformTime::Seconds();
     TWeakObjectPtr<ASandSurfacePreviewActor> WeakThis(this);
+    PendingDensityReadback = MakeShared<FSandSurfaceReadbackRequest, ESPMode::ThreadSafe>();
+    PendingDensityReadback->NodeCount = Field.NodeCount();
 
     ENQUEUE_RENDER_COMMAND(SandBuildPreviewDensity)(
         [WeakThis, ThisGeneration, Particles = MoveTemp(Particles), ParticleCount, Field,
-            RequestStartSeconds, bCullLunarBoundary](
+            RequestStartSeconds, bCullLunarBoundary, Request = PendingDensityReadback](
             FRHICommandListImmediate& RHICmdList) mutable
         {
             const double DensityStartSeconds = FPlatformTime::Seconds();
@@ -613,176 +705,213 @@ bool ASandSurfacePreviewActor::GenerateSurfaceFromParticlePositions(
             FRDGBufferRef DensityBuffer = nullptr;
             AddDensityPass(GraphBuilder, Particles, Field, DensityBuffer);
 
-            TArray<uint32> FixedDensity;
-            FixedDensity.SetNumUninitialized(Field.NodeCount());
+            Request->Readback = MakeUnique<FRHIGPUBufferReadback>(TEXT("Sand.Surface.DensityReadback"));
             FDensityReadbackParameters* ReadbackParameters = GraphBuilder.AllocParameters<FDensityReadbackParameters>();
             ReadbackParameters->SourceBuffer = DensityBuffer;
             GraphBuilder.AddPass(
                 RDG_EVENT_NAME("Sand.Surface.DensityReadback"),
                 ReadbackParameters,
                 ERDGPassFlags::Readback,
-                [&FixedDensity, ReadbackParameters](FRHICommandListImmediate& ReadbackCommandList)
+                [Request, ReadbackParameters](FRHICommandListImmediate& ReadbackCommandList)
                 {
-                    const uint32 NumBytes = FixedDensity.Num() * sizeof(uint32);
-                    FRHIGPUBufferReadback Readback(TEXT("Sand.Surface.DensityReadback"));
-                    Readback.EnqueueCopy(ReadbackCommandList, ReadbackParameters->SourceBuffer->GetRHI(), NumBytes);
-                    ReadbackCommandList.SubmitAndBlockUntilGPUIdle();
-                    const void* Source = Readback.Lock(NumBytes);
-                    FMemory::Memcpy(FixedDensity.GetData(), Source, NumBytes);
-                    Readback.Unlock();
+                    Request->Readback->EnqueueCopy(ReadbackCommandList,
+                        ReadbackParameters->SourceBuffer->GetRHI(), Request->NodeCount * sizeof(uint32));
                 });
             GraphBuilder.Execute();
-            const double DensitySeconds = FPlatformTime::Seconds() - DensityStartSeconds;
-
-            Async(EAsyncExecution::ThreadPool,
-                [WeakThis, ThisGeneration, FixedDensity = MoveTemp(FixedDensity), ParticleCount, Field,
-                    RequestStartSeconds, DensitySeconds, bCullLunarBoundary]() mutable
-                {
-                    const double MeshStartSeconds = FPlatformTime::Seconds();
-                    FSurfaceMeshData Mesh = BuildSurfaceMesh(
-                        FixedDensity, Field, bCullLunarBoundary);
-                    const double MeshSeconds = FPlatformTime::Seconds() - MeshStartSeconds;
-                    AsyncTask(ENamedThreads::GameThread,
-                        [WeakThis, ThisGeneration, Mesh = MoveTemp(Mesh), ParticleCount, Field,
-                            RequestStartSeconds, DensitySeconds, MeshSeconds]() mutable
-                        {
-                            if (!WeakThis.IsValid() || WeakThis->BuildGeneration != ThisGeneration)
+            Request->OnReady = [WeakThis, ThisGeneration, ParticleCount, Field,
+                RequestStartSeconds, DensityStartSeconds, bCullLunarBoundary](TArray<uint32>&& FixedDensity)
+            {
+                const double DensitySeconds = FPlatformTime::Seconds() - DensityStartSeconds;
+                Async(EAsyncExecution::ThreadPool,
+                    [WeakThis, ThisGeneration, FixedDensity = MoveTemp(FixedDensity), ParticleCount, Field,
+                        RequestStartSeconds, DensitySeconds, bCullLunarBoundary]() mutable
+                    {
+                        const double MeshStartSeconds = FPlatformTime::Seconds();
+                        FSurfaceMeshData Mesh = BuildSurfaceMesh(
+                            FixedDensity, Field, bCullLunarBoundary);
+                        const double MeshSeconds = FPlatformTime::Seconds() - MeshStartSeconds;
+                        AsyncTask(ENamedThreads::GameThread,
+                            [WeakThis, ThisGeneration, Mesh = MoveTemp(Mesh), ParticleCount, Field,
+                                RequestStartSeconds, DensitySeconds, MeshSeconds]() mutable
                             {
-                                return;
-                            }
-                            WeakThis->bSurfaceBuildInFlight = false;
-                            const double UploadStartSeconds = FPlatformTime::Seconds();
-                            WeakThis->SurfaceMesh->CreateMeshSection_LinearColor(
-                                0,
-                                Mesh.Vertices,
-                                Mesh.Indices,
-                                Mesh.Normals,
-                                Mesh.UVs,
-                                Mesh.Colors,
-                                TArray<FProcMeshTangent>(),
-                                false,
-                                false);
-                            const double UploadSeconds = FPlatformTime::Seconds() - UploadStartSeconds;
-                            WeakThis->OnSurfaceMeshUpdated(Mesh.Vertices, Mesh.Indices);
-                            const double SupportSeconds = FPlatformTime::Seconds() - UploadStartSeconds - UploadSeconds;
-                            const double TotalSeconds = FPlatformTime::Seconds() - RequestStartSeconds;
-                            WeakThis->LastSurfaceBuildMilliseconds =
-                                static_cast<float>(TotalSeconds * 1000.0);
-                            const double DensityMegabytes =
-                                static_cast<double>(Field.NodeCount() * sizeof(uint32)) / (1024.0 * 1024.0);
-                            const double MeshMegabytes = static_cast<double>(
-                                Mesh.Vertices.GetAllocatedSize() + Mesh.Indices.GetAllocatedSize() +
-                                Mesh.Normals.GetAllocatedSize() + Mesh.UVs.GetAllocatedSize() +
-                                Mesh.Colors.GetAllocatedSize()) / (1024.0 * 1024.0);
-                            ++WeakThis->CompletedBuildCount;
-                            if (WeakThis->CompletedBuildCount == 1 || WeakThis->CompletedBuildCount % 60 == 0)
-                            {
-                                UE_LOG(LogTemp, Display,
-                                    TEXT("Sand surface frame %llu: %d particles, %d nodes (%.2f MB), %d geometric/%d raster triangles, mesh %.2f MB; density %.1f ms, mesh %.1f ms, upload %.1f ms, support %.1f ms, total %.1f ms"),
-                                    WeakThis->CompletedBuildCount,
-                                    ParticleCount,
-                                    Field.NodeCount(),
-                                    DensityMegabytes,
-                                    Mesh.Indices.Num() / 3,
-                                    Mesh.Indices.Num() / 3,
-                                    MeshMegabytes,
-                                    DensitySeconds * 1000.0,
-                                    MeshSeconds * 1000.0,
-                                    UploadSeconds * 1000.0,
-                                    SupportSeconds * 1000.0,
-                                    TotalSeconds * 1000.0);
-                            }
-
-                            const bool bCaptureSequence =
-                                FParse::Param(FCommandLine::Get(), TEXT("SandCaptureSequence"));
-                            const bool bCaptureSingle =
-                                FParse::Param(FCommandLine::Get(), TEXT("SandCaptureSurfacePreview"));
-                            if (WeakThis->bAllowAutomaticCapture && !WeakThis->bCaptureScheduled && (bCaptureSequence || bCaptureSingle))
-                            {
-                                WeakThis->bCaptureScheduled = true;
-                                if (bCaptureSequence)
+                                if (!WeakThis.IsValid() || WeakThis->BuildGeneration != ThisGeneration)
                                 {
-                                    // Space captures around meaningful phases instead of
-                                    // requesting screenshots faster than the async image
-                                    // writer can finish. The previous 0.25 s cadence dropped
-                                    // most requests and never reached the completed dump.
-                                    constexpr int32 CaptureFrameCount = 8;
-                                    static constexpr float CaptureTimesSeconds[CaptureFrameCount] =
+                                    return;
+                                }
+                                WeakThis->bSurfaceBuildInFlight = false;
+                                const double UploadStartSeconds = FPlatformTime::Seconds();
+                                WeakThis->SurfaceMesh->CreateMeshSection_LinearColor(
+                                    0,
+                                    Mesh.Vertices,
+                                    Mesh.Indices,
+                                    Mesh.Normals,
+                                    Mesh.UVs,
+                                    Mesh.Colors,
+                                    TArray<FProcMeshTangent>(),
+                                    false,
+                                    false);
+                                const double UploadSeconds = FPlatformTime::Seconds() - UploadStartSeconds;
+                                WeakThis->OnSurfaceMeshUpdated(Mesh.Vertices, Mesh.Indices);
+                                const double SupportSeconds = FPlatformTime::Seconds() - UploadStartSeconds - UploadSeconds;
+                                const double TotalSeconds = FPlatformTime::Seconds() - RequestStartSeconds;
+                                WeakThis->LastSurfaceBuildMilliseconds =
+                                    static_cast<float>(TotalSeconds * 1000.0);
+                                const double DensityMegabytes =
+                                    static_cast<double>(Field.NodeCount() * sizeof(uint32)) / (1024.0 * 1024.0);
+                                const double MeshMegabytes = static_cast<double>(
+                                    Mesh.Vertices.GetAllocatedSize() + Mesh.Indices.GetAllocatedSize() +
+                                    Mesh.Normals.GetAllocatedSize() + Mesh.UVs.GetAllocatedSize() +
+                                    Mesh.Colors.GetAllocatedSize()) / (1024.0 * 1024.0);
+                                ++WeakThis->CompletedBuildCount;
+                                if (WeakThis->CompletedBuildCount == 1 || WeakThis->CompletedBuildCount % 60 == 0)
+                                {
+                                    UE_LOG(LogTemp, Display,
+                                        TEXT("Sand surface frame %llu: %d particles, %d nodes (%.2f MB), %d geometric/%d raster triangles, mesh %.2f MB; density %.1f ms, mesh %.1f ms, upload %.1f ms, support %.1f ms, total %.1f ms"),
+                                        WeakThis->CompletedBuildCount,
+                                        ParticleCount,
+                                        Field.NodeCount(),
+                                        DensityMegabytes,
+                                        Mesh.Indices.Num() / 3,
+                                        Mesh.Indices.Num() / 3,
+                                        MeshMegabytes,
+                                        DensitySeconds * 1000.0,
+                                        MeshSeconds * 1000.0,
+                                        UploadSeconds * 1000.0,
+                                        SupportSeconds * 1000.0,
+                                        TotalSeconds * 1000.0);
+                                }
+
+                                const bool bCaptureSequence =
+                                    FParse::Param(FCommandLine::Get(), TEXT("SandCaptureSequence"));
+                                const bool bCaptureSingle =
+                                    FParse::Param(FCommandLine::Get(), TEXT("SandCaptureSurfacePreview"));
+                                if (WeakThis->bAllowAutomaticCapture && !WeakThis->bCaptureScheduled && (bCaptureSequence || bCaptureSingle))
+                                {
+                                    WeakThis->bCaptureScheduled = true;
+                                    if (bCaptureSequence)
                                     {
-                                        0.2f, 1.5f, 3.0f, 4.3f,
-                                        5.3f, 6.5f, 9.5f, 12.2f
-                                    };
-                                    constexpr float CaptureDurationSeconds = 13.2f;
-                                    const FString SequenceDirectory = FPaths::Combine(
-                                        FPaths::ProjectDir(), TEXT("Artifacts/ExcavationSequence"));
-                                    IFileManager::Get().MakeDirectory(*SequenceDirectory, true);
-                                    TSharedRef<int32, ESPMode::ThreadSafe> FrameIndex =
-                                        MakeShared<int32, ESPMode::ThreadSafe>(0);
-                                    TSharedRef<double, ESPMode::ThreadSafe> CaptureStartSeconds =
-                                        MakeShared<double, ESPMode::ThreadSafe>(FPlatformTime::Seconds());
-                                    FTSTicker::GetCoreTicker().AddTicker(
-                                        FTickerDelegate::CreateLambda(
-                                            [SequenceDirectory, FrameIndex, CaptureStartSeconds](const float)
-                                            {
-                                                const double CaptureElapsedSeconds =
-                                                    FPlatformTime::Seconds() - *CaptureStartSeconds;
-                                                if (CaptureElapsedSeconds < CaptureTimesSeconds[*FrameIndex])
+                                        // Space captures around meaningful phases instead of
+                                        // requesting screenshots faster than the async image
+                                        // writer can finish. The previous 0.25 s cadence dropped
+                                        // most requests and never reached the completed dump.
+                                        constexpr int32 CaptureFrameCount = 8;
+                                        static constexpr float CaptureTimesSeconds[CaptureFrameCount] =
+                                        {
+                                            0.2f, 1.5f, 3.0f, 4.3f,
+                                            5.3f, 6.5f, 9.5f, 12.2f
+                                        };
+                                        constexpr float CaptureDurationSeconds = 13.2f;
+                                        const FString SequenceDirectory = FPaths::Combine(
+                                            FPaths::ProjectDir(), TEXT("Artifacts/ExcavationSequence"));
+                                        IFileManager::Get().MakeDirectory(*SequenceDirectory, true);
+                                        TSharedRef<int32, ESPMode::ThreadSafe> FrameIndex =
+                                            MakeShared<int32, ESPMode::ThreadSafe>(0);
+                                        TSharedRef<double, ESPMode::ThreadSafe> CaptureStartSeconds =
+                                            MakeShared<double, ESPMode::ThreadSafe>(FPlatformTime::Seconds());
+                                        FTSTicker::GetCoreTicker().AddTicker(
+                                            FTickerDelegate::CreateLambda(
+                                                [SequenceDirectory, FrameIndex, CaptureStartSeconds](const float)
                                                 {
-                                                    return true;
-                                                }
-                                                const FString FramePath = FPaths::Combine(
-                                                    SequenceDirectory,
-                                                    FString::Printf(TEXT("frame_%03d.png"), *FrameIndex));
-                                                FScreenshotRequest::RequestScreenshot(FramePath, true, false);
-                                                ++*FrameIndex;
-                                                return *FrameIndex < CaptureFrameCount;
-                                            }),
-                                        0.1f);
-                                    FTSTicker::GetCoreTicker().AddTicker(
-                                        FTickerDelegate::CreateLambda(
-                                            [](float)
-                                            {
-                                                FPlatformMisc::RequestExit(false);
-                                                return false;
-                                            }),
-                                        CaptureDurationSeconds + 1.5f);
+                                                    const double CaptureElapsedSeconds =
+                                                        FPlatformTime::Seconds() - *CaptureStartSeconds;
+                                                    if (CaptureElapsedSeconds < CaptureTimesSeconds[*FrameIndex])
+                                                    {
+                                                        return true;
+                                                    }
+                                                    const FString FramePath = FPaths::Combine(
+                                                        SequenceDirectory,
+                                                        FString::Printf(TEXT("frame_%03d.png"), *FrameIndex));
+                                                    FScreenshotRequest::RequestScreenshot(FramePath, true, false);
+                                                    ++*FrameIndex;
+                                                    return *FrameIndex < CaptureFrameCount;
+                                                }),
+                                            0.1f);
+                                        FTSTicker::GetCoreTicker().AddTicker(
+                                            FTickerDelegate::CreateLambda(
+                                                [](float)
+                                                {
+                                                    FPlatformMisc::RequestExit(false);
+                                                    return false;
+                                                }),
+                                            CaptureDurationSeconds + 1.5f);
+                                    }
+                                    else
+                                    {
+                                        float CaptureDelaySeconds = 0.5f;
+                                        FParse::Value(
+                                            FCommandLine::Get(),
+                                            TEXT("SandCaptureDelaySeconds="),
+                                            CaptureDelaySeconds);
+                                        CaptureDelaySeconds = FMath::Clamp(CaptureDelaySeconds, 0.1f, 30.0f);
+                                        const FString ScreenshotPath = FPaths::Combine(
+                                            FPaths::ProjectDir(),
+                                            TEXT("Artifacts/SandSurfaceUEPreview.png"));
+                                        FTSTicker::GetCoreTicker().AddTicker(
+                                            FTickerDelegate::CreateLambda(
+                                                [ScreenshotPath](float)
+                                                {
+                                                    FScreenshotRequest::RequestScreenshot(ScreenshotPath, true, false);
+                                                    return false;
+                                                }),
+                                            CaptureDelaySeconds);
+                                        FTSTicker::GetCoreTicker().AddTicker(
+                                            FTickerDelegate::CreateLambda(
+                                                [](float)
+                                                {
+                                                    FPlatformMisc::RequestExit(false);
+                                                    return false;
+                                                }),
+                                            CaptureDelaySeconds + 1.5f);
+                                    }
                                 }
-                                else
-                                {
-                                    float CaptureDelaySeconds = 0.5f;
-                                    FParse::Value(
-                                        FCommandLine::Get(),
-                                        TEXT("SandCaptureDelaySeconds="),
-                                        CaptureDelaySeconds);
-                                    CaptureDelaySeconds = FMath::Clamp(CaptureDelaySeconds, 0.1f, 30.0f);
-                                    const FString ScreenshotPath = FPaths::Combine(
-                                        FPaths::ProjectDir(),
-                                        TEXT("Artifacts/SandSurfaceUEPreview.png"));
-                                    FTSTicker::GetCoreTicker().AddTicker(
-                                        FTickerDelegate::CreateLambda(
-                                            [ScreenshotPath](float)
-                                            {
-                                                FScreenshotRequest::RequestScreenshot(ScreenshotPath, true, false);
-                                                return false;
-                                            }),
-                                        CaptureDelaySeconds);
-                                    FTSTicker::GetCoreTicker().AddTicker(
-                                        FTickerDelegate::CreateLambda(
-                                            [](float)
-                                            {
-                                                FPlatformMisc::RequestExit(false);
-                                                return false;
-                                            }),
-                                        CaptureDelaySeconds + 1.5f);
-                                }
-                            }
-                        });
-                });
+                            });
+                    });
+            };
         });
     return true;
 }
 
 #if WITH_DEV_AUTOMATION_TESTS
+
+struct FSandSurfaceAsyncTestState
+{
+    TSharedPtr<FSandSurfaceReadbackRequest, ESPMode::ThreadSafe> Request;
+    FAutomationTestBase* Test = nullptr;
+    double Deadline = FPlatformTime::Seconds() + 20.0;
+    bool bMatchesReference = false; // Published by Request->bComplete.
+};
+
+using FSandSurfaceAsyncTestStatePtr = TSharedPtr<FSandSurfaceAsyncTestState, ESPMode::ThreadSafe>;
+DEFINE_LATENT_AUTOMATION_COMMAND_ONE_PARAMETER(
+    FSandSurfaceAsyncReadbackCheck, FSandSurfaceAsyncTestStatePtr, State);
+
+bool FSandSurfaceAsyncReadbackCheck::Update()
+{
+    if (State->Request->bComplete.load())
+    {
+        State->Test->TestTrue(TEXT("Nonblocking GPU density copy exactly matches blocking reference"),
+            State->bMatchesReference);
+        return true;
+    }
+    if (FPlatformTime::Seconds() > State->Deadline)
+    {
+        State->Test->AddError(TEXT("Nonblocking density readback timed out"));
+        ENQUEUE_RENDER_COMMAND(SandCancelAsyncReadbackTest)(
+            [Request = State->Request](FRHICommandListImmediate&)
+            {
+                Request->Readback.Reset();
+                Request->OnReady = nullptr;
+                Request->bComplete.store(true);
+            });
+        return true;
+    }
+    if (!State->Request->bPollQueued.exchange(true))
+    {
+        ENQUEUE_RENDER_COMMAND(SandPollAsyncReadbackTest)(
+            [Request = State->Request](FRHICommandListImmediate&) { Request->Poll(); });
+    }
+    return false;
+}
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
     FSandSurfaceReconstructionTest,
@@ -900,6 +1029,43 @@ bool FSandSurfaceReconstructionTest::RunTest(const FString& Parameters)
         TestTrue(TEXT("Top surface normals face away from the sand"),
             Mesh.Normals[HighestVertex].Z > 0.2);
     }
+    // Reconstruct the same field through the production fence-polling path.
+    // This stage yields to the editor instead of waiting for the GPU on either
+    // the game or render thread, and compares every fixed-point density node.
+    auto State = MakeShared<FSandSurfaceAsyncTestState, ESPMode::ThreadSafe>();
+    State->Test = this;
+    State->Request = MakeShared<FSandSurfaceReadbackRequest, ESPMode::ThreadSafe>();
+    State->Request->NodeCount = Field.NodeCount();
+    ENQUEUE_RENDER_COMMAND(SandStartAsyncReadbackTest)(
+        [State, Particles = MoveTemp(Particles), Field, Reference = MoveTemp(FixedDensity)]
+        (FRHICommandListImmediate& RHICmdList) mutable
+        {
+            auto Request = State->Request;
+            Request->Readback = MakeUnique<FRHIGPUBufferReadback>(TEXT("Sand.Surface.AsyncTestReadback"));
+            // Capture State weakly to avoid a State -> Request -> callback cycle.
+            Request->OnReady = [WeakState = TWeakPtr<FSandSurfaceAsyncTestState, ESPMode::ThreadSafe>(State),
+                Reference = MoveTemp(Reference)](TArray<uint32>&& Result)
+            {
+                if (auto Pinned = WeakState.Pin())
+                {
+                    Pinned->bMatchesReference = Result == Reference;
+                }
+            };
+            FRDGBuilder GraphBuilder(RHICmdList);
+            FRDGBufferRef DensityBuffer = nullptr;
+            AddDensityPass(GraphBuilder, Particles, Field, DensityBuffer);
+            auto* Parameters = GraphBuilder.AllocParameters<FDensityReadbackParameters>();
+            Parameters->SourceBuffer = DensityBuffer;
+            GraphBuilder.AddPass(RDG_EVENT_NAME("Sand.Surface.AsyncTestReadback"), Parameters,
+                ERDGPassFlags::Readback,
+                [Request, Parameters](FRHICommandListImmediate& CommandList)
+                {
+                    Request->Readback->EnqueueCopy(CommandList, Parameters->SourceBuffer->GetRHI(),
+                        Request->NodeCount * sizeof(uint32));
+                });
+            GraphBuilder.Execute();
+        });
+    ADD_LATENT_AUTOMATION_COMMAND(FSandSurfaceAsyncReadbackCheck(State));
     return true;
 }
 

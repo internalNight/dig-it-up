@@ -4,6 +4,7 @@
 #include "SandSurfacePreviewActor.generated.h"
 
 class UProceduralMeshComponent;
+struct FSandSurfaceReadbackRequest;
 
 /**
  * Diagnostic continuous-surface renderer for the granular material-point state.
@@ -55,9 +56,15 @@ public:
 
 protected:
     virtual void BeginPlay() override;
+    virtual void Tick(float DeltaSeconds) override;
+    virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
+    virtual void BeginDestroy() override;
+    virtual bool ShouldTickIfViewportsOnly() const override;
     virtual void OnSurfaceMeshUpdated(const TArray<FVector>& Vertices, const TArray<int32>& Indices) {}
 
 private:
+    void CancelPendingSurfaceBuild();
+    TSharedPtr<FSandSurfaceReadbackRequest, ESPMode::ThreadSafe> PendingDensityReadback;
     uint32 BuildGeneration = 0;
     uint64 CompletedBuildCount = 0;
     float LastSurfaceBuildMilliseconds = 0.0f;

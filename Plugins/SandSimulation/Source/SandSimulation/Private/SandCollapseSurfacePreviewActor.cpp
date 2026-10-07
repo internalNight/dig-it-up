@@ -707,7 +707,9 @@ void ASandCollapseSurfacePreviewActor::Tick(const float DeltaSeconds)
             WeakThis->CompletedSimulationFrames += FramesToAdvance;
             WeakThis->LastGpuStepMilliseconds = static_cast<float>(GpuSeconds * 1000.0);
             const bool bLogFrame = WeakThis->CompletedSimulationFrames == FramesToAdvance ||
-                WeakThis->CompletedSimulationFrames % FMath::RoundToInt(2.f/FixedFrameSeconds) == 0;
+                WeakThis->CompletedSimulationFrames % FMath::RoundToInt(2.f/FixedFrameSeconds) == 0 ||
+                (!Particles.IsEmpty() &&
+                    FParse::Param(FCommandLine::Get(), TEXT("SandInteractionDiagnostics")));
             int32 MovedParticleCount = -1;
             int32 BucketInteriorParticleCount = -1;
             int32 CarriedParticleCount = -1;
