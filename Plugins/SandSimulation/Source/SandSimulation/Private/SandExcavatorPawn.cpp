@@ -6,6 +6,7 @@
 #include "SandLevelSettings.h"
 #include "SandLunarTerrain.h"
 #include "SandLunarWorldActor.h"
+#include "SandCollapseSurfacePreviewActor.h"
 #include "SandPreviewGameMode.h"
 
 #include "Camera/CameraComponent.h"
@@ -334,7 +335,8 @@ void ASandExcavatorPawn::Tick(const float DeltaSeconds)
     APlayerController* PlayerController = Cast<APlayerController>(GetController());
     const bool bBoundaryTest = FParse::Param(FCommandLine::Get(), TEXT("SandBoundaryTest"));
     const bool bBoomRaiseTest = FParse::Param(FCommandLine::Get(), TEXT("SandBoomRaiseTest"));
-    const bool bWindowTest = FParse::Param(FCommandLine::Get(), TEXT("SandWindowTest"));
+    const bool bTerrainAcceptance = FParse::Param(FCommandLine::Get(), TEXT("SandTerrainAcceptance"));
+    const bool bWindowTest = bTerrainAcceptance || FParse::Param(FCommandLine::Get(), TEXT("SandWindowTest"));
     const bool bPrefetchTest = FParse::Param(FCommandLine::Get(),TEXT("SandPrefetchTest"));
     const bool bDriveTraceTest = FParse::Param(
         FCommandLine::Get(),TEXT("SandDriveTraceTest"));
@@ -372,7 +374,7 @@ void ASandExcavatorPawn::Tick(const float DeltaSeconds)
             TEXT("LUNAR_PREFETCH_TEST step=%d location=(%.1f,%.1f,%.1f)cm"),
             WindowTestTeleportCount,TestLocation.X,TestLocation.Y,TestLocation.Z);
     }
-    else if (bWindowTest && WindowTestTeleportCount < 4 &&
+    else if (bWindowTest && WindowTestTeleportCount < (bTerrainAcceptance ? 5 : 4) &&
         ElapsedSimulationSeconds >= 2.0f + 3.0f * WindowTestTeleportCount)
     {
         FVector TestLocation = GetActorLocation();
@@ -391,6 +393,14 @@ void ASandExcavatorPawn::Tick(const float DeltaSeconds)
         else
         {
             TestLocation += FVector(-1200.0f,-600.0f,0.0f);
+        }
+        if (bTerrainAcceptance)
+        {
+            static const FVector2D Destinations[] = {
+                FVector2D(-2100,1500), FVector2D(8000,2000),
+                FVector2D(15500,-12000), FVector2D(21000,0), FVector2D(-100,0)};
+            TestLocation.X = Destinations[WindowTestTeleportCount].X;
+            TestLocation.Y = Destinations[WindowTestTeleportCount].Y;
         }
         const USandLevelSettings* Settings = GetDefault<USandLevelSettings>();
         TestLocation.Z = 100.0f * Sand::Lunar::ActiveSurfaceHeightMeters(
@@ -578,6 +588,51 @@ void ASandExcavatorPawn::Tick(const float DeltaSeconds)
         {
             Throttle=Machine->GetAcceptanceThrottle();
             bBrake=Throttle==0;
+        }
+    }
+    if (bLunarWorld && !Cast<ASandRoadheaderPawn>(this))
+    {
+        const auto* Settings = GetDefault<USandLevelSettings>();
+        const float Limit = 50.0f * Settings->LunarPlayableWidthMeters - 100.0f;
+        FVector Location = GetActorLocation();
+        const FVector Before = Location;
+        Location.X = FMath::Clamp(Location.X,-Limit,Limit);
+        Location.Y = FMath::Clamp(Location.Y,-Limit,Limit);
+        if (!Location.Equals(Before,0.01))
+        {
+            SetActorLocation(Location,false,nullptr,ETeleportType::TeleportPhysics);
+            FVector Velocity = ChassisBody->GetPhysicsLinearVelocity();
+            if (Location.X != Before.X) Velocity.X = 0;
+            if (Location.Y != Before.Y) Velocity.Y = 0;
+            ChassisBody->SetPhysicsLinearVelocity(Velocity);
+            UE_LOG(LogTemp,Display,TEXT("LUNAR_FIELD_BOUNDARY x=%.1f y=%.1f limit=%.1fcm"),Location.X,Location.Y,Limit);
+        }
+        for (TActorIterator<ASandCollapseSurfacePreviewActor> It(GetWorld()); It; ++It)
+        {
+            FVector Forward = GetActorForwardVector(); Forward.Z = 0; Forward.Normalize();
+            const FVector Right = FVector::CrossProduct(FVector::UpVector,Forward);
+            bUseParticleBearingSupport = true;
+            for (int32 Index = 0; Index < 4; ++Index)
+            {
+                const FVector Sample = Location + Forward * (Index % 2 == 0 ? 15.0f : -15.0f) +
+                    Right * (Index < 2 ? LeftTrackCollider->GetRelativeLocation().Y : RightTrackCollider->GetRelativeLocation().Y);
+                float Height = 0;
+                const bool bMeasured = It->SampleSandSurfaceHeightCentimeters(FVector2D(Sample.X,Sample.Y),15.0f,Height);
+                if (!bMeasured && (!It->IsInsideSupportWindow(FVector2D(Sample.X,Sample.Y)) ||
+                    !It->HasSupportHeightSamples()))
+                {
+                    // Unloaded terrain during a window handoff uses the same
+                    // analytic seed as its particles. Inside the live window,
+                    // a genuinely empty column resolves to the solid floor.
+                    Height = 100.0f * Sand::Lunar::ActiveSurfaceHeightMeters(
+                        Sample.X/100.0f,Sample.Y/100.0f,Settings->SandDepthMeters,Settings->LunarPlayableWidthMeters);
+                }
+                bSandSupportSampleValid[Index] = true;
+                SandSupportHeightsCentimeters[Index] = FMath::Max(0.0f,Height - 0.5f);
+                ParticleSupportCeilingsCentimeters[Index] = Height + 4.0f;
+            }
+            bHasSandSupportSamples = true;
+            break;
         }
     }
     ApplySandSuspension(DeltaSeconds, bBrake);
@@ -813,7 +868,7 @@ void ASandExcavatorPawn::UpdateSandSupportSurface(
 void ASandExcavatorPawn::UpdateVisibleSandSupport(
     const TArray<FVector>& Vertices, const TArray<int32>& Indices)
 {
-    if(FParse::Param(FCommandLine::Get(),TEXT("SandDirectReaction"))) return;
+    if(bUseParticleBearingSupport || FParse::Param(FCommandLine::Get(),TEXT("SandDirectReaction"))) return;
     const FVector Origin = ChassisBody->GetComponentLocation();
     FVector Forward = GetActorForwardVector();
     Forward.Z = 0.0; Forward.Normalize();

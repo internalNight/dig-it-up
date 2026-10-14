@@ -24,6 +24,7 @@ public:
         float SpacingMeters);
     void SetActiveWindowCenterMeters(FVector2f NewCenterMeters);
     void SetOverviewMode(bool bEnabled);
+    void ApplyLiveTrackMarks(TArray<FVector>& Vertices,TArray<FVector>& Normals) const;
 
 protected:
     virtual void BeginPlay() override;
@@ -74,6 +75,7 @@ private:
     TArray<FVector2D> TransitionUVs;
     TArray<FLinearColor> TransitionColors;
     TArray<FVector2f> TrackHistoryMeters;
+    TMap<FIntPoint,TArray<FVector2f>> TrackSpatialBuckets;
     FVector PreviousLeftTrackMark = FVector::ZeroVector;
     FVector PreviousRightTrackMark = FVector::ZeroVector;
     bool bHasPreviousTrackMark = false;

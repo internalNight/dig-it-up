@@ -231,6 +231,16 @@ void ASandHUD::DrawPerformanceMetrics()
     }
 
     const double Now = FPlatformTime::Seconds();
+    if (FParse::Param(FCommandLine::Get(),TEXT("SandFrameTiming")))
+    {
+        if (PerformanceCaptureStartSeconds == 0) PerformanceCaptureStartSeconds = Now;
+        if (LastPerformanceFrameSeconds > 0)
+        {
+            UE_LOG(LogTemp,Display,TEXT("DESKTOP_FRAME elapsed=%.3f deltaMs=%.3f"),
+                Now - PerformanceCaptureStartSeconds,1000.0 * (Now - LastPerformanceFrameSeconds));
+        }
+        LastPerformanceFrameSeconds = Now;
+    }
     if (PerformanceWindowStartSeconds == 0.0)
     {
         PerformanceWindowStartSeconds = Now;
@@ -378,6 +388,9 @@ void ASandHUD::DrawHUD()
         ? Excavator->GetVelocity().Size2D() * 0.036f
         : 0.0f;
     const int32 Supports = Excavator != nullptr ? Excavator->GetGroundedSupportCount() : 0;
+    const bool bNearFieldEdge = bLunarWorld && Excavator &&
+        FMath::Max(FMath::Abs(Excavator->GetActorLocation().X),FMath::Abs(Excavator->GetActorLocation().Y)) >
+            50.0f * GetDefault<USandLevelSettings>()->LunarPlayableWidthMeters - 400.0f;
 
     DrawRect(FLinearColor(0.015f, 0.02f, 0.025f, 0.76f), Margin, Margin, 370.0f * UiScale, 80.0f * UiScale);
     DrawText(Machine ? TEXT("DIG IT UP  /  ROADHEADER") : bLunarWorld ? TEXT("DIG IT UP  /  LUNAR FIELD") : TEXT("DIG IT UP  /  EASY"), FLinearColor(1.0f, 0.70f, 0.12f),
@@ -386,7 +399,8 @@ void ASandHUD::DrawHUD()
         FLinearColor::White, Margin + 12.0f * UiScale, Margin + 31.0f * UiScale,
         Font, 0.92f * UiScale, false);
     DrawText(FParse::Param(FCommandLine::Get(),TEXT("SandRoadheaderBench")) ? TEXT("Transport bench  |  Press T to run motors") : Mode && Mode->HasWon() ? TEXT("VICTORY COMPLETE  -  Free exploration") :
-        bLunarWorld ? TEXT("Travel, scan and excavate the buried golden specimen.") :
+        bLunarWorld ? (bNearFieldEdge ? TEXT("Field edge - turn back toward the excavation area.") :
+            TEXT("400 x 400 m field - scan and excavate the specimen.")) :
         *FString::Printf(TEXT("Dig %.1f m down. Uncover the RED floor."),1.5f),
         FLinearColor(1.0f,0.65f,0.65f),Margin+12*UiScale,Margin+54*UiScale,Font,0.95f*UiScale,false);
     if (Mode && !Mode->HasWon() && Mode->GetVictoryCountdown()>=0.0f)

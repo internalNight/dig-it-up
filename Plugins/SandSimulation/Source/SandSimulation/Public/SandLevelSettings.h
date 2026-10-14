@@ -21,8 +21,8 @@ public:
     float ActiveWidthMeters = 15.0f;
 
     /** Total driveable lunar field streamed through the local MPM window. */
-    UPROPERTY(Config, EditAnywhere, Category="Lunar World", meta=(ClampMin="20.0", ClampMax="200.0", Units="m"))
-    float LunarPlayableWidthMeters = 100.0f;
+    UPROPERTY(Config, EditAnywhere, Category="Lunar World", meta=(ClampMin="20.0", ClampMax="1000.0", Units="m"))
+    float LunarPlayableWidthMeters = 400.0f;
 
     UPROPERTY(Config, EditAnywhere, Category="Lunar World", meta=(ClampMin="256.0", ClampMax="4096.0", Units="m"))
     float LunarLandscapeSizeMeters = 2048.0f;

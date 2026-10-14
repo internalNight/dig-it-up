@@ -1,0 +1,1177 @@
+{
+  "Date": "2026-10-14",
+  "BaseRevision": "f8b89a43eb03e84621334832b34b161fd150d7f8",
+  "Hardware": "RTX 4060 Ti 8 GB / i5-13600KF / 32 GB",
+  "Engine": "UE 5.8",
+  "Resolution": "1920x1080",
+  "Method": "Serial hidden-window short tests. HUD rates average two-second windows with first three and final screenshot window excluded. Frame percentiles use elapsed 6-24 seconds and HUD frame intervals. Different stages are labeled; do not assume all fixtures/build modes are paired.",
+  "Automation": {
+    "Passed": 21,
+    "Warnings": 0,
+    "Failed": 0
+  },
+  "Archive": {
+    "Files": 49,
+    "MiB": 354.77,
+    "SHA256": "28EF8B1ADD6CF0FB7231AFCE0731A4040A9AF62B6B852FE05556D6508A89D0BA"
+  },
+  "Runs": [
+    {
+      "Label": "TerrainMain",
+      "Date": "2026-10-14T18:04:34.4040103+08:00",
+      "Mode": "Editor development game",
+      "Readback": "Fence-polled",
+      "Dig": false,
+      "DriveTrace": false,
+      "TerrainAcceptance": false,
+      "WarmSampleCount": 9,
+      "Mean": {
+        "GameFps": 59.16,
+        "SandHz": 30.06,
+        "SurfaceHz": 10.08,
+        "SolverReadbackMs": 16.13,
+        "SurfaceBuildMs": 53.93
+      },
+      "FrameTimes": {
+        "Count": 1065,
+        "P50ms": 16.691,
+        "P95ms": 22.505,
+        "P99ms": 23.967
+      },
+      "MinimumLoggedSupports": 4.0,
+      "WarmSamples": [
+        {
+          "GameFps": 59.0,
+          "SandHz": 30.0,
+          "SurfaceHz": 10.0,
+          "SolverReadbackMs": 18.3,
+          "SurfaceBuildMs": 53.9
+        },
+        {
+          "GameFps": 58.8,
+          "SandHz": 30.4,
+          "SurfaceHz": 10.0,
+          "SolverReadbackMs": 17.4,
+          "SurfaceBuildMs": 53.8
+        },
+        {
+          "GameFps": 58.6,
+          "SandHz": 30.3,
+          "SurfaceHz": 9.9,
+          "SolverReadbackMs": 13.7,
+          "SurfaceBuildMs": 53.8
+        },
+        {
+          "GameFps": 59.3,
+          "SandHz": 29.9,
+          "SurfaceHz": 10.5,
+          "SolverReadbackMs": 12.4,
+          "SurfaceBuildMs": 54.9
+        },
+        {
+          "GameFps": 58.8,
+          "SandHz": 29.9,
+          "SurfaceHz": 10.0,
+          "SolverReadbackMs": 12.9,
+          "SurfaceBuildMs": 54.5
+        },
+        {
+          "GameFps": 59.2,
+          "SandHz": 29.9,
+          "SurfaceHz": 10.0,
+          "SolverReadbackMs": 17.5,
+          "SurfaceBuildMs": 53.8
+        },
+        {
+          "GameFps": 59.6,
+          "SandHz": 29.8,
+          "SurfaceHz": 9.9,
+          "SolverReadbackMs": 17.8,
+          "SurfaceBuildMs": 53.2
+        },
+        {
+          "GameFps": 59.5,
+          "SandHz": 30.5,
+          "SurfaceHz": 10.5,
+          "SolverReadbackMs": 14.5,
+          "SurfaceBuildMs": 54.2
+        },
+        {
+          "GameFps": 59.6,
+          "SandHz": 29.8,
+          "SurfaceHz": 9.9,
+          "SolverReadbackMs": 20.7,
+          "SurfaceBuildMs": 53.3
+        }
+      ]
+    },
+    {
+      "Label": "ReactiveMain",
+      "Date": "2026-10-14T18:08:12.1685618+08:00",
+      "Mode": "Editor development game",
+      "Readback": "Short blocking density transfer",
+      "Dig": false,
+      "DriveTrace": false,
+      "TerrainAcceptance": false,
+      "WarmSampleCount": 9,
+      "Mean": {
+        "GameFps": 58.48,
+        "SandHz": 30.04,
+        "SurfaceHz": 14.14,
+        "SolverReadbackMs": 20.14,
+        "SurfaceBuildMs": 38.38
+      },
+      "FrameTimes": {
+        "Count": 1053,
+        "P50ms": 16.771,
+        "P95ms": 22.452,
+        "P99ms": 24.35
+      },
+      "MinimumLoggedSupports": 4.0,
+      "WarmSamples": [
+        {
+          "GameFps": 58.0,
+          "SandHz": 30.2,
+          "SurfaceHz": 13.9,
+          "SolverReadbackMs": 25.6,
+          "SurfaceBuildMs": 53.3
+        },
+        {
+          "GameFps": 57.7,
+          "SandHz": 29.9,
+          "SurfaceHz": 13.9,
+          "SolverReadbackMs": 18.1,
+          "SurfaceBuildMs": 36.3
+        },
+        {
+          "GameFps": 58.8,
+          "SandHz": 29.9,
+          "SurfaceHz": 14.5,
+          "SolverReadbackMs": 19.4,
+          "SurfaceBuildMs": 36.9
+        },
+        {
+          "GameFps": 59.0,
+          "SandHz": 30.0,
+          "SurfaceHz": 14.5,
+          "SolverReadbackMs": 17.8,
+          "SurfaceBuildMs": 36.3
+        },
+        {
+          "GameFps": 58.0,
+          "SandHz": 30.3,
+          "SurfaceHz": 13.9,
+          "SolverReadbackMs": 17.6,
+          "SurfaceBuildMs": 36.7
+        },
+        {
+          "GameFps": 58.6,
+          "SandHz": 29.8,
+          "SurfaceHz": 14.4,
+          "SolverReadbackMs": 12.7,
+          "SurfaceBuildMs": 36.3
+        },
+        {
+          "GameFps": 58.8,
+          "SandHz": 30.1,
+          "SurfaceHz": 13.8,
+          "SolverReadbackMs": 24.7,
+          "SurfaceBuildMs": 36.6
+        },
+        {
+          "GameFps": 58.9,
+          "SandHz": 30.0,
+          "SurfaceHz": 14.5,
+          "SolverReadbackMs": 25.4,
+          "SurfaceBuildMs": 36.4
+        },
+        {
+          "GameFps": 58.5,
+          "SandHz": 30.2,
+          "SurfaceHz": 13.9,
+          "SolverReadbackMs": 20.0,
+          "SurfaceBuildMs": 36.6
+        }
+      ]
+    },
+    {
+      "Label": "ReactiveDrive",
+      "Date": "2026-10-14T18:09:24.2660566+08:00",
+      "Mode": "Editor development game",
+      "Readback": "Short blocking density transfer",
+      "Dig": false,
+      "DriveTrace": true,
+      "TerrainAcceptance": false,
+      "WarmSampleCount": 9,
+      "Mean": {
+        "GameFps": 56.39,
+        "SandHz": 30.03,
+        "SurfaceHz": 12.56,
+        "SolverReadbackMs": 20.13,
+        "SurfaceBuildMs": 40.02
+      },
+      "FrameTimes": {
+        "Count": 1015,
+        "P50ms": 16.81,
+        "P95ms": 24.498,
+        "P99ms": 28.396
+      },
+      "MinimumLoggedSupports": 4.0,
+      "WarmSamples": [
+        {
+          "GameFps": 56.9,
+          "SandHz": 30.0,
+          "SurfaceHz": 12.5,
+          "SolverReadbackMs": 23.9,
+          "SurfaceBuildMs": 38.3
+        },
+        {
+          "GameFps": 56.6,
+          "SandHz": 30.3,
+          "SurfaceHz": 12.9,
+          "SolverReadbackMs": 23.5,
+          "SurfaceBuildMs": 37.8
+        },
+        {
+          "GameFps": 56.0,
+          "SandHz": 29.7,
+          "SurfaceHz": 12.9,
+          "SolverReadbackMs": 13.3,
+          "SurfaceBuildMs": 39.2
+        },
+        {
+          "GameFps": 56.4,
+          "SandHz": 30.0,
+          "SurfaceHz": 11.5,
+          "SolverReadbackMs": 24.8,
+          "SurfaceBuildMs": 38.3
+        },
+        {
+          "GameFps": 55.1,
+          "SandHz": 29.8,
+          "SurfaceHz": 11.9,
+          "SolverReadbackMs": 13.8,
+          "SurfaceBuildMs": 37.9
+        },
+        {
+          "GameFps": 56.9,
+          "SandHz": 30.5,
+          "SurfaceHz": 12.5,
+          "SolverReadbackMs": 26.2,
+          "SurfaceBuildMs": 55.0
+        },
+        {
+          "GameFps": 57.3,
+          "SandHz": 29.9,
+          "SurfaceHz": 13.0,
+          "SolverReadbackMs": 14.3,
+          "SurfaceBuildMs": 37.9
+        },
+        {
+          "GameFps": 55.0,
+          "SandHz": 30.2,
+          "SurfaceHz": 12.4,
+          "SolverReadbackMs": 23.5,
+          "SurfaceBuildMs": 38.0
+        },
+        {
+          "GameFps": 57.3,
+          "SandHz": 29.9,
+          "SurfaceHz": 13.4,
+          "SolverReadbackMs": 17.9,
+          "SurfaceBuildMs": 37.8
+        }
+      ]
+    },
+    {
+      "Label": "ReactiveDig",
+      "Date": "2026-10-14T18:08:48.3310907+08:00",
+      "Mode": "Editor development game",
+      "Readback": "Short blocking density transfer",
+      "Dig": true,
+      "DriveTrace": false,
+      "TerrainAcceptance": false,
+      "WarmSampleCount": 9,
+      "Mean": {
+        "GameFps": 55.14,
+        "SandHz": 30.04,
+        "SurfaceHz": 12.5,
+        "SolverReadbackMs": 16.76,
+        "SurfaceBuildMs": 39.7
+      },
+      "FrameTimes": {
+        "Count": 992,
+        "P50ms": 16.825,
+        "P95ms": 25.28,
+        "P99ms": 29.428
+      },
+      "MinimumLoggedSupports": 0.0,
+      "WarmSamples": [
+        {
+          "GameFps": 55.0,
+          "SandHz": 30.2,
+          "SurfaceHz": 12.4,
+          "SolverReadbackMs": 18.1,
+          "SurfaceBuildMs": 38.6
+        },
+        {
+          "GameFps": 54.3,
+          "SandHz": 29.4,
+          "SurfaceHz": 12.0,
+          "SolverReadbackMs": 13.6,
+          "SurfaceBuildMs": 55.0
+        },
+        {
+          "GameFps": 54.4,
+          "SandHz": 29.9,
+          "SurfaceHz": 12.0,
+          "SolverReadbackMs": 17.6,
+          "SurfaceBuildMs": 37.6
+        },
+        {
+          "GameFps": 55.4,
+          "SandHz": 30.5,
+          "SurfaceHz": 12.5,
+          "SolverReadbackMs": 18.1,
+          "SurfaceBuildMs": 37.6
+        },
+        {
+          "GameFps": 54.9,
+          "SandHz": 30.0,
+          "SurfaceHz": 12.5,
+          "SolverReadbackMs": 16.7,
+          "SurfaceBuildMs": 37.7
+        },
+        {
+          "GameFps": 55.3,
+          "SandHz": 30.4,
+          "SurfaceHz": 12.9,
+          "SolverReadbackMs": 18.8,
+          "SurfaceBuildMs": 37.6
+        },
+        {
+          "GameFps": 55.6,
+          "SandHz": 29.8,
+          "SurfaceHz": 12.9,
+          "SolverReadbackMs": 12.2,
+          "SurfaceBuildMs": 37.9
+        },
+        {
+          "GameFps": 55.7,
+          "SandHz": 30.4,
+          "SurfaceHz": 12.9,
+          "SolverReadbackMs": 17.9,
+          "SurfaceBuildMs": 37.7
+        },
+        {
+          "GameFps": 55.7,
+          "SandHz": 29.8,
+          "SurfaceHz": 12.4,
+          "SolverReadbackMs": 17.8,
+          "SurfaceBuildMs": 37.6
+        }
+      ]
+    },
+    {
+      "Label": "ParallelMain",
+      "Date": "2026-10-14T18:19:03.2676093+08:00",
+      "Mode": "Editor development game",
+      "Readback": "Short blocking density transfer",
+      "Dig": false,
+      "DriveTrace": false,
+      "TerrainAcceptance": false,
+      "WarmSampleCount": 9,
+      "Mean": {
+        "GameFps": 59.13,
+        "SandHz": 30.06,
+        "SurfaceHz": 14.49,
+        "SolverReadbackMs": 16.97,
+        "SurfaceBuildMs": 38.4
+      },
+      "FrameTimes": {
+        "Count": 1064,
+        "P50ms": 16.764,
+        "P95ms": 22.213,
+        "P99ms": 24.019
+      },
+      "MinimumLoggedSupports": 4.0,
+      "WarmSamples": [
+        {
+          "GameFps": 58.5,
+          "SandHz": 30.2,
+          "SurfaceHz": 13.9,
+          "SolverReadbackMs": 18.6,
+          "SurfaceBuildMs": 36.3
+        },
+        {
+          "GameFps": 59.6,
+          "SandHz": 29.8,
+          "SurfaceHz": 14.9,
+          "SolverReadbackMs": 13.7,
+          "SurfaceBuildMs": 36.3
+        },
+        {
+          "GameFps": 59.3,
+          "SandHz": 29.9,
+          "SurfaceHz": 14.4,
+          "SolverReadbackMs": 13.6,
+          "SurfaceBuildMs": 36.6
+        },
+        {
+          "GameFps": 59.3,
+          "SandHz": 30.4,
+          "SurfaceHz": 14.5,
+          "SolverReadbackMs": 13.8,
+          "SurfaceBuildMs": 36.7
+        },
+        {
+          "GameFps": 58.9,
+          "SandHz": 30.2,
+          "SurfaceHz": 14.4,
+          "SolverReadbackMs": 18.4,
+          "SurfaceBuildMs": 36.4
+        },
+        {
+          "GameFps": 58.4,
+          "SandHz": 29.9,
+          "SurfaceHz": 14.0,
+          "SolverReadbackMs": 17.0,
+          "SurfaceBuildMs": 36.3
+        },
+        {
+          "GameFps": 59.4,
+          "SandHz": 30.2,
+          "SurfaceHz": 14.8,
+          "SolverReadbackMs": 27.1,
+          "SurfaceBuildMs": 53.3
+        },
+        {
+          "GameFps": 59.3,
+          "SandHz": 29.9,
+          "SurfaceHz": 15.0,
+          "SolverReadbackMs": 15.4,
+          "SurfaceBuildMs": 37.4
+        },
+        {
+          "GameFps": 59.5,
+          "SandHz": 30.0,
+          "SurfaceHz": 14.5,
+          "SolverReadbackMs": 15.1,
+          "SurfaceBuildMs": 36.3
+        }
+      ]
+    },
+    {
+      "Label": "FinalMain",
+      "Date": "2026-10-14T18:15:17.8314109+08:00",
+      "Mode": "Packaged development game",
+      "Readback": "Short blocking density transfer",
+      "Dig": false,
+      "DriveTrace": false,
+      "TerrainAcceptance": false,
+      "WarmSampleCount": 9,
+      "Mean": {
+        "GameFps": 59.87,
+        "SandHz": 30.01,
+        "SurfaceHz": 10.02,
+        "SolverReadbackMs": 12.66,
+        "SurfaceBuildMs": 56.31
+      },
+      "FrameTimes": {
+        "Count": 1078,
+        "P50ms": 16.688,
+        "P95ms": 22.284,
+        "P99ms": 23.219
+      },
+      "MinimumLoggedSupports": 4.0,
+      "WarmSamples": [
+        {
+          "GameFps": 59.8,
+          "SandHz": 30.4,
+          "SurfaceHz": 10.0,
+          "SolverReadbackMs": 12.7,
+          "SurfaceBuildMs": 54.2
+        },
+        {
+          "GameFps": 59.7,
+          "SandHz": 29.9,
+          "SurfaceHz": 10.0,
+          "SolverReadbackMs": 13.5,
+          "SurfaceBuildMs": 57.7
+        },
+        {
+          "GameFps": 59.4,
+          "SandHz": 30.2,
+          "SurfaceHz": 10.4,
+          "SolverReadbackMs": 12.4,
+          "SurfaceBuildMs": 56.4
+        },
+        {
+          "GameFps": 60.0,
+          "SandHz": 30.0,
+          "SurfaceHz": 10.0,
+          "SolverReadbackMs": 12.4,
+          "SurfaceBuildMs": 56.0
+        },
+        {
+          "GameFps": 60.2,
+          "SandHz": 29.8,
+          "SurfaceHz": 9.9,
+          "SolverReadbackMs": 12.3,
+          "SurfaceBuildMs": 56.5
+        },
+        {
+          "GameFps": 60.0,
+          "SandHz": 30.0,
+          "SurfaceHz": 10.0,
+          "SolverReadbackMs": 11.9,
+          "SurfaceBuildMs": 56.0
+        },
+        {
+          "GameFps": 60.0,
+          "SandHz": 30.0,
+          "SurfaceHz": 10.0,
+          "SolverReadbackMs": 12.9,
+          "SurfaceBuildMs": 56.9
+        },
+        {
+          "GameFps": 60.0,
+          "SandHz": 30.0,
+          "SurfaceHz": 10.0,
+          "SolverReadbackMs": 13.0,
+          "SurfaceBuildMs": 55.8
+        },
+        {
+          "GameFps": 59.7,
+          "SandHz": 29.8,
+          "SurfaceHz": 9.9,
+          "SolverReadbackMs": 12.8,
+          "SurfaceBuildMs": 57.3
+        }
+      ]
+    },
+    {
+      "Label": "ParallelPackMain",
+      "Date": "2026-10-14T18:21:14.9189448+08:00",
+      "Mode": "Packaged development game",
+      "Readback": "Short blocking density transfer",
+      "Dig": false,
+      "DriveTrace": false,
+      "TerrainAcceptance": false,
+      "WarmSampleCount": 9,
+      "Mean": {
+        "GameFps": 58.13,
+        "SandHz": 29.96,
+        "SurfaceHz": 10.04,
+        "SolverReadbackMs": 19.12,
+        "SurfaceBuildMs": 50.81
+      },
+      "FrameTimes": {
+        "Count": 1047,
+        "P50ms": 16.748,
+        "P95ms": 22.701,
+        "P99ms": 24.371
+      },
+      "MinimumLoggedSupports": 4.0,
+      "WarmSamples": [
+        {
+          "GameFps": 58.7,
+          "SandHz": 29.8,
+          "SurfaceHz": 9.9,
+          "SolverReadbackMs": 25.0,
+          "SurfaceBuildMs": 40.1
+        },
+        {
+          "GameFps": 57.3,
+          "SandHz": 29.9,
+          "SurfaceHz": 10.0,
+          "SolverReadbackMs": 18.6,
+          "SurfaceBuildMs": 53.8
+        },
+        {
+          "GameFps": 58.5,
+          "SandHz": 30.3,
+          "SurfaceHz": 9.9,
+          "SolverReadbackMs": 13.8,
+          "SurfaceBuildMs": 53.8
+        },
+        {
+          "GameFps": 58.1,
+          "SandHz": 30.3,
+          "SurfaceHz": 10.4,
+          "SolverReadbackMs": 17.8,
+          "SurfaceBuildMs": 54.1
+        },
+        {
+          "GameFps": 58.5,
+          "SandHz": 29.8,
+          "SurfaceHz": 9.9,
+          "SolverReadbackMs": 18.8,
+          "SurfaceBuildMs": 54.0
+        },
+        {
+          "GameFps": 57.9,
+          "SandHz": 30.0,
+          "SurfaceHz": 10.0,
+          "SolverReadbackMs": 19.2,
+          "SurfaceBuildMs": 54.0
+        },
+        {
+          "GameFps": 58.2,
+          "SandHz": 29.8,
+          "SurfaceHz": 9.9,
+          "SolverReadbackMs": 25.4,
+          "SurfaceBuildMs": 38.9
+        },
+        {
+          "GameFps": 58.9,
+          "SandHz": 29.9,
+          "SurfaceHz": 10.0,
+          "SolverReadbackMs": 20.4,
+          "SurfaceBuildMs": 54.7
+        },
+        {
+          "GameFps": 57.1,
+          "SandHz": 29.8,
+          "SurfaceHz": 10.4,
+          "SolverReadbackMs": 13.1,
+          "SurfaceBuildMs": 53.9
+        }
+      ]
+    },
+    {
+      "Label": "ParallelPackDrive",
+      "Date": "2026-10-14T18:21:44.9989236+08:00",
+      "Mode": "Packaged development game",
+      "Readback": "Short blocking density transfer",
+      "Dig": false,
+      "DriveTrace": true,
+      "TerrainAcceptance": false,
+      "WarmSampleCount": 9,
+      "Mean": {
+        "GameFps": 56.34,
+        "SandHz": 30.09,
+        "SurfaceHz": 10.13,
+        "SolverReadbackMs": 17.91,
+        "SurfaceBuildMs": 51.06
+      },
+      "FrameTimes": {
+        "Count": 1014,
+        "P50ms": 16.777,
+        "P95ms": 25.71,
+        "P99ms": 29.353
+      },
+      "MinimumLoggedSupports": 4.0,
+      "WarmSamples": [
+        {
+          "GameFps": 56.4,
+          "SandHz": 29.4,
+          "SurfaceHz": 10.0,
+          "SolverReadbackMs": 25.1,
+          "SurfaceBuildMs": 41.0
+        },
+        {
+          "GameFps": 56.0,
+          "SandHz": 30.8,
+          "SurfaceHz": 10.4,
+          "SolverReadbackMs": 13.4,
+          "SurfaceBuildMs": 55.4
+        },
+        {
+          "GameFps": 56.4,
+          "SandHz": 29.5,
+          "SurfaceHz": 10.0,
+          "SolverReadbackMs": 14.5,
+          "SurfaceBuildMs": 55.3
+        },
+        {
+          "GameFps": 55.4,
+          "SandHz": 29.9,
+          "SurfaceHz": 9.5,
+          "SolverReadbackMs": 13.8,
+          "SurfaceBuildMs": 41.6
+        },
+        {
+          "GameFps": 53.9,
+          "SandHz": 30.4,
+          "SurfaceHz": 10.5,
+          "SolverReadbackMs": 26.0,
+          "SurfaceBuildMs": 40.2
+        },
+        {
+          "GameFps": 57.3,
+          "SandHz": 30.4,
+          "SurfaceHz": 10.0,
+          "SolverReadbackMs": 14.3,
+          "SurfaceBuildMs": 58.1
+        },
+        {
+          "GameFps": 57.4,
+          "SandHz": 30.2,
+          "SurfaceHz": 10.4,
+          "SolverReadbackMs": 13.2,
+          "SurfaceBuildMs": 56.3
+        },
+        {
+          "GameFps": 55.9,
+          "SandHz": 29.7,
+          "SurfaceHz": 9.9,
+          "SolverReadbackMs": 25.9,
+          "SurfaceBuildMs": 55.5
+        },
+        {
+          "GameFps": 58.4,
+          "SandHz": 30.5,
+          "SurfaceHz": 10.5,
+          "SolverReadbackMs": 15.0,
+          "SurfaceBuildMs": 56.1
+        }
+      ]
+    },
+    {
+      "Label": "ParallelPackPit",
+      "Date": "2026-10-14T18:22:14.8954165+08:00",
+      "Mode": "Packaged development game",
+      "Readback": "Short blocking density transfer",
+      "Dig": false,
+      "DriveTrace": false,
+      "TerrainAcceptance": true,
+      "WarmSampleCount": 9,
+      "Mean": {
+        "GameFps": 54.64,
+        "SandHz": 28.92,
+        "SurfaceHz": 9.66,
+        "SolverReadbackMs": 17.71,
+        "SurfaceBuildMs": 49.98
+      },
+      "FrameTimes": {
+        "Count": 984,
+        "P50ms": 16.788,
+        "P95ms": 26.011,
+        "P99ms": 34.032
+      },
+      "MinimumLoggedSupports": 4.0,
+      "WarmSamples": [
+        {
+          "GameFps": 54.8,
+          "SandHz": 29.9,
+          "SurfaceHz": 10.0,
+          "SolverReadbackMs": 14.7,
+          "SurfaceBuildMs": 44.8
+        },
+        {
+          "GameFps": 49.4,
+          "SandHz": 26.4,
+          "SurfaceHz": 9.0,
+          "SolverReadbackMs": 30.3,
+          "SurfaceBuildMs": 54.7
+        },
+        {
+          "GameFps": 49.6,
+          "SandHz": 26.3,
+          "SurfaceHz": 8.9,
+          "SolverReadbackMs": 22.2,
+          "SurfaceBuildMs": 40.5
+        },
+        {
+          "GameFps": 55.0,
+          "SandHz": 29.2,
+          "SurfaceHz": 9.9,
+          "SolverReadbackMs": 15.1,
+          "SurfaceBuildMs": 53.8
+        },
+        {
+          "GameFps": 53.9,
+          "SandHz": 29.7,
+          "SurfaceHz": 9.9,
+          "SolverReadbackMs": 14.8,
+          "SurfaceBuildMs": 53.9
+        },
+        {
+          "GameFps": 57.2,
+          "SandHz": 29.8,
+          "SurfaceHz": 9.9,
+          "SolverReadbackMs": 14.8,
+          "SurfaceBuildMs": 53.8
+        },
+        {
+          "GameFps": 57.6,
+          "SandHz": 29.3,
+          "SurfaceHz": 9.9,
+          "SolverReadbackMs": 14.4,
+          "SurfaceBuildMs": 54.1
+        },
+        {
+          "GameFps": 57.3,
+          "SandHz": 29.9,
+          "SurfaceHz": 9.5,
+          "SolverReadbackMs": 18.7,
+          "SurfaceBuildMs": 53.9
+        },
+        {
+          "GameFps": 57.0,
+          "SandHz": 29.8,
+          "SurfaceHz": 9.9,
+          "SolverReadbackMs": 14.4,
+          "SurfaceBuildMs": 40.3
+        }
+      ]
+    },
+    {
+      "Label": "ParallelPackDig",
+      "Date": "2026-10-14T18:22:44.8335489+08:00",
+      "Mode": "Packaged development game",
+      "Readback": "Short blocking density transfer",
+      "Dig": true,
+      "DriveTrace": false,
+      "TerrainAcceptance": false,
+      "WarmSampleCount": 9,
+      "Mean": {
+        "GameFps": 58.12,
+        "SandHz": 30.0,
+        "SurfaceHz": 10.2,
+        "SolverReadbackMs": 17.17,
+        "SurfaceBuildMs": 50.29
+      },
+      "FrameTimes": {
+        "Count": 1046,
+        "P50ms": 16.801,
+        "P95ms": 23.443,
+        "P99ms": 25.151
+      },
+      "MinimumLoggedSupports": 3.0,
+      "WarmSamples": [
+        {
+          "GameFps": 58.3,
+          "SandHz": 30.4,
+          "SurfaceHz": 10.0,
+          "SolverReadbackMs": 11.5,
+          "SurfaceBuildMs": 56.3
+        },
+        {
+          "GameFps": 58.3,
+          "SandHz": 29.4,
+          "SurfaceHz": 10.5,
+          "SolverReadbackMs": 19.3,
+          "SurfaceBuildMs": 38.3
+        },
+        {
+          "GameFps": 58.8,
+          "SandHz": 30.4,
+          "SurfaceHz": 10.5,
+          "SolverReadbackMs": 15.3,
+          "SurfaceBuildMs": 39.5
+        },
+        {
+          "GameFps": 57.9,
+          "SandHz": 29.4,
+          "SurfaceHz": 10.0,
+          "SolverReadbackMs": 18.8,
+          "SurfaceBuildMs": 40.8
+        },
+        {
+          "GameFps": 57.9,
+          "SandHz": 30.4,
+          "SurfaceHz": 10.5,
+          "SolverReadbackMs": 14.9,
+          "SurfaceBuildMs": 55.1
+        },
+        {
+          "GameFps": 57.2,
+          "SandHz": 29.9,
+          "SurfaceHz": 10.0,
+          "SolverReadbackMs": 23.2,
+          "SurfaceBuildMs": 55.8
+        },
+        {
+          "GameFps": 57.6,
+          "SandHz": 30.3,
+          "SurfaceHz": 10.4,
+          "SolverReadbackMs": 15.5,
+          "SurfaceBuildMs": 55.4
+        },
+        {
+          "GameFps": 58.5,
+          "SandHz": 30.0,
+          "SurfaceHz": 10.0,
+          "SolverReadbackMs": 15.1,
+          "SurfaceBuildMs": 55.9
+        },
+        {
+          "GameFps": 58.6,
+          "SandHz": 29.8,
+          "SurfaceHz": 9.9,
+          "SolverReadbackMs": 20.9,
+          "SurfaceBuildMs": 55.5
+        }
+      ]
+    },
+    {
+      "Label": "SeamDrive",
+      "Date": "2026-10-14T18:26:20.7491711+08:00",
+      "Mode": "Editor development game",
+      "Readback": "Short blocking density transfer",
+      "Dig": false,
+      "DriveTrace": true,
+      "TerrainAcceptance": false,
+      "WarmSampleCount": 9,
+      "Mean": {
+        "GameFps": 56.77,
+        "SandHz": 29.68,
+        "SurfaceHz": 13.41,
+        "SolverReadbackMs": 16.29,
+        "SurfaceBuildMs": 36.8
+      },
+      "FrameTimes": {
+        "Count": 1022,
+        "P50ms": 16.852,
+        "P95ms": 24.048,
+        "P99ms": 27.718
+      },
+      "MinimumLoggedSupports": 4.0,
+      "WarmSamples": [
+        {
+          "GameFps": 56.5,
+          "SandHz": 30.0,
+          "SurfaceHz": 12.5,
+          "SolverReadbackMs": 17.6,
+          "SurfaceBuildMs": 38.1
+        },
+        {
+          "GameFps": 56.8,
+          "SandHz": 29.9,
+          "SurfaceHz": 13.0,
+          "SolverReadbackMs": 18.0,
+          "SurfaceBuildMs": 37.9
+        },
+        {
+          "GameFps": 56.3,
+          "SandHz": 29.4,
+          "SurfaceHz": 14.0,
+          "SolverReadbackMs": 13.3,
+          "SurfaceBuildMs": 37.7
+        },
+        {
+          "GameFps": 57.0,
+          "SandHz": 30.0,
+          "SurfaceHz": 13.5,
+          "SolverReadbackMs": 13.2,
+          "SurfaceBuildMs": 37.9
+        },
+        {
+          "GameFps": 55.6,
+          "SandHz": 28.8,
+          "SurfaceHz": 13.4,
+          "SolverReadbackMs": 21.1,
+          "SurfaceBuildMs": 27.9
+        },
+        {
+          "GameFps": 57.9,
+          "SandHz": 29.9,
+          "SurfaceHz": 13.5,
+          "SolverReadbackMs": 14.6,
+          "SurfaceBuildMs": 38.0
+        },
+        {
+          "GameFps": 57.2,
+          "SandHz": 29.8,
+          "SurfaceHz": 13.9,
+          "SolverReadbackMs": 13.8,
+          "SurfaceBuildMs": 37.9
+        },
+        {
+          "GameFps": 56.6,
+          "SandHz": 29.3,
+          "SurfaceHz": 13.9,
+          "SolverReadbackMs": 17.8,
+          "SurfaceBuildMs": 38.0
+        },
+        {
+          "GameFps": 57.0,
+          "SandHz": 30.0,
+          "SurfaceHz": 13.0,
+          "SolverReadbackMs": 17.2,
+          "SurfaceBuildMs": 37.8
+        }
+      ]
+    },
+    {
+      "Label": "DeliveryDrive",
+      "Date": "2026-10-14T18:28:30.3455861+08:00",
+      "Mode": "Packaged development game",
+      "Readback": "Short blocking density transfer",
+      "Dig": false,
+      "DriveTrace": true,
+      "TerrainAcceptance": false,
+      "WarmSampleCount": 9,
+      "Mean": {
+        "GameFps": 58.59,
+        "SandHz": 29.98,
+        "SurfaceHz": 10.18,
+        "SolverReadbackMs": 17.0,
+        "SurfaceBuildMs": 49.44
+      },
+      "FrameTimes": {
+        "Count": 1054,
+        "P50ms": 16.76,
+        "P95ms": 23.616,
+        "P99ms": 25.443
+      },
+      "MinimumLoggedSupports": 4.0,
+      "WarmSamples": [
+        {
+          "GameFps": 59.4,
+          "SandHz": 30.0,
+          "SurfaceHz": 10.5,
+          "SolverReadbackMs": 13.2,
+          "SurfaceBuildMs": 58.1
+        },
+        {
+          "GameFps": 58.9,
+          "SandHz": 29.9,
+          "SurfaceHz": 10.5,
+          "SolverReadbackMs": 18.8,
+          "SurfaceBuildMs": 40.7
+        },
+        {
+          "GameFps": 57.0,
+          "SandHz": 30.0,
+          "SurfaceHz": 10.0,
+          "SolverReadbackMs": 23.0,
+          "SurfaceBuildMs": 40.9
+        },
+        {
+          "GameFps": 59.5,
+          "SandHz": 30.0,
+          "SurfaceHz": 10.0,
+          "SolverReadbackMs": 18.0,
+          "SurfaceBuildMs": 40.1
+        },
+        {
+          "GameFps": 57.2,
+          "SandHz": 29.8,
+          "SurfaceHz": 9.9,
+          "SolverReadbackMs": 23.5,
+          "SurfaceBuildMs": 55.5
+        },
+        {
+          "GameFps": 58.9,
+          "SandHz": 30.2,
+          "SurfaceHz": 10.4,
+          "SolverReadbackMs": 15.9,
+          "SurfaceBuildMs": 55.9
+        },
+        {
+          "GameFps": 59.1,
+          "SandHz": 29.8,
+          "SurfaceHz": 9.9,
+          "SolverReadbackMs": 13.8,
+          "SurfaceBuildMs": 56.5
+        },
+        {
+          "GameFps": 57.4,
+          "SandHz": 30.2,
+          "SurfaceHz": 10.4,
+          "SolverReadbackMs": 12.8,
+          "SurfaceBuildMs": 57.9
+        },
+        {
+          "GameFps": 59.9,
+          "SandHz": 29.9,
+          "SurfaceHz": 10.0,
+          "SolverReadbackMs": 14.0,
+          "SurfaceBuildMs": 39.4
+        }
+      ]
+    },
+    {
+      "Label": "DeliveryPit",
+      "Date": "2026-10-14T18:29:00.5987783+08:00",
+      "Mode": "Packaged development game",
+      "Readback": "Short blocking density transfer",
+      "Dig": false,
+      "DriveTrace": false,
+      "TerrainAcceptance": true,
+      "WarmSampleCount": 9,
+      "Mean": {
+        "GameFps": 55.8,
+        "SandHz": 29.57,
+        "SurfaceHz": 9.94,
+        "SolverReadbackMs": 20.37,
+        "SurfaceBuildMs": 49.37
+      },
+      "FrameTimes": {
+        "Count": 1005,
+        "P50ms": 16.766,
+        "P95ms": 23.986,
+        "P99ms": 29.507
+      },
+      "MinimumLoggedSupports": 4.0,
+      "WarmSamples": [
+        {
+          "GameFps": 55.1,
+          "SandHz": 30.8,
+          "SurfaceHz": 10.4,
+          "SolverReadbackMs": 26.1,
+          "SurfaceBuildMs": 39.1
+        },
+        {
+          "GameFps": 51.4,
+          "SandHz": 27.4,
+          "SurfaceHz": 9.5,
+          "SolverReadbackMs": 23.6,
+          "SurfaceBuildMs": 54.0
+        },
+        {
+          "GameFps": 50.9,
+          "SandHz": 28.2,
+          "SurfaceHz": 9.4,
+          "SolverReadbackMs": 17.0,
+          "SurfaceBuildMs": 54.3
+        },
+        {
+          "GameFps": 57.6,
+          "SandHz": 29.8,
+          "SurfaceHz": 9.9,
+          "SolverReadbackMs": 20.4,
+          "SurfaceBuildMs": 54.7
+        },
+        {
+          "GameFps": 53.9,
+          "SandHz": 30.0,
+          "SurfaceHz": 10.0,
+          "SolverReadbackMs": 18.4,
+          "SurfaceBuildMs": 53.8
+        },
+        {
+          "GameFps": 59.0,
+          "SandHz": 29.8,
+          "SurfaceHz": 9.9,
+          "SolverReadbackMs": 19.3,
+          "SurfaceBuildMs": 53.9
+        },
+        {
+          "GameFps": 58.3,
+          "SandHz": 29.9,
+          "SurfaceHz": 10.0,
+          "SolverReadbackMs": 19.6,
+          "SurfaceBuildMs": 54.2
+        },
+        {
+          "GameFps": 57.8,
+          "SandHz": 30.4,
+          "SurfaceHz": 10.0,
+          "SolverReadbackMs": 13.0,
+          "SurfaceBuildMs": 39.9
+        },
+        {
+          "GameFps": 58.2,
+          "SandHz": 29.8,
+          "SurfaceHz": 10.4,
+          "SolverReadbackMs": 25.9,
+          "SurfaceBuildMs": 40.4
+        }
+      ]
+    }
+  ]
+}

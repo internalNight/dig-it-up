@@ -1,7 +1,7 @@
 @echo off
 setlocal
 set "UE_EDITOR=D:\UE_5.8\Engine\Binaries\Win64\UnrealEditor.exe"
-set "PACKAGED_GAME=%~dp0Builds\DesktopAsync_20261007\Windows\SandExcavator.exe"
+set "PACKAGED_GAME=%~dp0Builds\TerrainRepair_20261014\Windows\SandExcavator.exe"
 
 if exist "%PACKAGED_GAME%" (
     start "Dig It Up - Lunar Field Smooth" "%PACKAGED_GAME%" -windowed -ResX=1920 -ResY=1080 -d3d12 -sm6 -SandExcavator -SandQuality=DesktopSmooth

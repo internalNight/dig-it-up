@@ -1,6 +1,7 @@
 #include "SandSurfacePreviewActor.h"
 
 #include "Async/Async.h"
+#include "Async/ParallelFor.h"
 #include "Containers/Ticker.h"
 #include "UObject/ConstructorHelpers.h"
 #include "GlobalShader.h"
@@ -377,8 +378,14 @@ FSurfaceMeshData BuildSurfaceMesh(
     MarchingCubes.bParallelCompute = true;
     MarchingCubes.Implicit = [&SmoothedDensity, Field](const FVector3d Position)
     {
-        return static_cast<double>(SampleDensityMeters(
-            SmoothedDensity, Field, FVector3f(Position)));
+        // SingleLerp evaluates only lattice corners. Use double coordinates
+        // to recover their integer index instead of eight trilinear fetches.
+        const FVector3d Grid = (Position - FVector3d(Field.MinimumMeters)) / Field.VoxelSizeMeters;
+        const FIntVector Node(
+            FMath::Clamp(FMath::RoundToInt(Grid.X),0,Field.Resolution.X - 1),
+            FMath::Clamp(FMath::RoundToInt(Grid.Y),0,Field.Resolution.Y - 1),
+            FMath::Clamp(FMath::RoundToInt(Grid.Z),0,Field.Resolution.Z - 1));
+        return static_cast<double>(SmoothedDensity[FlattenNode(Node,Field.Resolution)]) / FixedPointScale;
     };
     MarchingCubes.Generate();
 
@@ -396,11 +403,11 @@ FSurfaceMeshData BuildSurfaceMesh(
         AccumulatedNormals[Triangle.C] += AreaNormal;
     }
     FSurfaceMeshData Mesh;
-    Mesh.Vertices.Reserve(MarchingCubes.Vertices.Num());
-    Mesh.Normals.Reserve(MarchingCubes.Vertices.Num());
-    Mesh.UVs.Reserve(MarchingCubes.Vertices.Num());
-    Mesh.Colors.Reserve(MarchingCubes.Vertices.Num());
-    for (int32 VertexIndex = 0; VertexIndex < MarchingCubes.Vertices.Num(); ++VertexIndex)
+    Mesh.Vertices.SetNumUninitialized(MarchingCubes.Vertices.Num());
+    Mesh.Normals.SetNumUninitialized(MarchingCubes.Vertices.Num());
+    Mesh.UVs.SetNumUninitialized(MarchingCubes.Vertices.Num());
+    Mesh.Colors.SetNumUninitialized(MarchingCubes.Vertices.Num());
+    ParallelFor(MarchingCubes.Vertices.Num(),[&](const int32 VertexIndex)
     {
         const FVector3d& Vertex = MarchingCubes.Vertices[VertexIndex];
         const FVector3f PositionMeters(Vertex);
@@ -428,12 +435,12 @@ FSurfaceMeshData BuildSurfaceMesh(
             FVector2D(Vertex.X + 19.31, Vertex.Y - 7.17) * 18.0f);
         const float DetailOffsetMeters = TopSurfaceWeight * (0.0015f * BroadNoise + 0.0005f * FineNoise);
         const FVector3d DetailedVertex = Vertex + FVector3d(OutwardNormal) * DetailOffsetMeters;
-        Mesh.Vertices.Add(FVector(DetailedVertex * UnrealUnitsPerMeter));
-        Mesh.Normals.Add(FVector(OutwardNormal));
-        Mesh.UVs.Add(FVector2D(Vertex.X, Vertex.Y));
+        Mesh.Vertices[VertexIndex] = FVector(DetailedVertex * UnrealUnitsPerMeter);
+        Mesh.Normals[VertexIndex] = FVector(OutwardNormal);
+        Mesh.UVs[VertexIndex] = FVector2D(Vertex.X, Vertex.Y);
         const float ToneVariation = 0.93f + 0.07f * BroadNoise;
-        Mesh.Colors.Add(FLinearColor(0.23f, 0.24f, 0.26f, 1.0f) * ToneVariation);
-    }
+        Mesh.Colors[VertexIndex] = FLinearColor(0.23f, 0.24f, 0.26f, 1.0f) * ToneVariation;
+    });
     Mesh.Indices.Reserve(MarchingCubes.Triangles.Num() * 3);
     for (const UE::Geometry::FIndex3i& Triangle : MarchingCubes.Triangles)
     {
@@ -740,6 +747,7 @@ bool ASandSurfacePreviewActor::GenerateSurfaceFromParticlePositions(
                                 }
                                 WeakThis->bSurfaceBuildInFlight = false;
                                 const double UploadStartSeconds = FPlatformTime::Seconds();
+                                WeakThis->PrepareSurfaceMesh(Mesh.Vertices,Mesh.Normals);
                                 WeakThis->SurfaceMesh->CreateMeshSection_LinearColor(
                                     0,
                                     Mesh.Vertices,
@@ -867,6 +875,14 @@ bool ASandSurfacePreviewActor::GenerateSurfaceFromParticlePositions(
                             });
                     });
             };
+            // The short density transfer can trade a small render-thread wait
+            // for one less frame of interaction latency. Retain fence polling
+            // as an opt-in profile for direct same-scene comparisons.
+            if (!FParse::Param(FCommandLine::Get(),TEXT("SandAsyncSurfaceReadback")))
+            {
+                RHICmdList.SubmitAndBlockUntilGPUIdle();
+                Request->Poll();
+            }
         });
     return true;
 }

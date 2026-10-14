@@ -1,6 +1,21 @@
 # Dig It Up
 
+## Terrain and response repair (2026-10-14)
+
+The driveable field is now **400 x 400 m**, with the same 15 m local physics
+window. The launcher prefers `Builds/TerrainRepair_20261014/Windows`.
+Track support samples the particle height grid at the current chassis position,
+including analytic support while a newly visited window loads. The field edge
+stops outward travel and shows a turn-back message. Live and frozen surfaces
+both display shallow track impressions; these are visual history, not calibrated
+compaction. Grid-aligned marching-cubes density fetches reduce extraction cost.
+The default uses the short blocking density transfer for quicker response;
+`-SandAsyncSurfaceReadback` retains the previous fence-polled comparison mode.
+See [repair evidence and limitations](Docs/TerrainResponseRepair.md).
+
 ## Desktop update (2026-10-07)
+
+Historical measurements below describe the superseded October 7 package.
 
 The lunar surface now reads GPU density through a polled fence instead of
 blocking the render thread until the GPU is idle. Both lunar launchers prefer
@@ -10,7 +25,7 @@ blocking the render thread until the GPU is idle. Both lunar launchers prefer
 
 ## Lunar field (2026-09-20)
 
-The default source-built scene is now a lunar excavation field: a **100 x 100 m
+The default source-built scene is now a lunar excavation field: a **400 x 400 m
 driveable granular field** streams through a 15 x 15 m GPU-MPM window inside a
 8,192 m visual lunar horizon. Its detailed inner 2,048 m landscape uses a
 central 1,024 m embedded LROC relief crop, with highlands, a mare-like basin,
@@ -27,7 +42,7 @@ product plus clearly documented designed features. It is not presented as one
 literal surveyed site. Only the local window is solved on the GPU at one time;
 five-metre chunks follow the excavator, preserve their full particle state for the
 session and leave a lightweight frozen deformation surface outside the live
-window. A once-built 0.5 m visual mesh keeps the complete 100 m field and its
+window. A once-built 0.5 m visual mesh keeps the complete 400 m field and its
 craters visible at long range, while actual track samples stamp shallow grooves
 into frozen chunk heightfields across window changes without overlay geometry. See
 [source, architecture and limitations](Docs/LunarWorld.md).
@@ -103,7 +118,7 @@ granted by this upload; Unreal Engine and third-party components keep their own 
 
 ## Project and milestone notes
 
-Current playtest: **Dig It Up — Lunar Field**, a 100 × 100 m driveable regolith
+Current playtest: **Dig It Up — Lunar Field**, a 400 × 400 m driveable regolith
 field with a moving 15 × 15 m active physics window inside an 8.192 km visual
 lunar context. Use the timed mineral bearing to find and expose most of the
 buried golden specimen; Victory appears 3 seconds later.

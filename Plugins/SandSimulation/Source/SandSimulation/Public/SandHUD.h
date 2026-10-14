@@ -35,6 +35,8 @@ private:
     float LeverInput[3] = {0.0f, 0.0f, 0.0f};
     TWeakObjectPtr<class ASandCollapseSurfacePreviewActor> PerformanceActor;
     double PerformanceWindowStartSeconds = 0.0;
+    double LastPerformanceFrameSeconds = 0.0;
+    double PerformanceCaptureStartSeconds = 0.0;
     uint64 PerformanceWindowStartSimulationFrames = 0;
     uint64 PerformanceWindowStartSurfaceFrames = 0;
     int32 PerformanceWindowRenderFrames = 0;

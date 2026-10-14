@@ -494,7 +494,7 @@ void ASandLunarWorldActor::BuildMacroTerrain()
             // The permanent detailed preview reaches 55 m from the origin.
             // Leave a small underlap so the 8 m macro grid can never expose a
             // horizon-facing crack at the edge of the 100 m playable field.
-            if (FMath::Max(FMath::Abs(Center.X), FMath::Abs(Center.Y)) < 52.0f)
+            if (FMath::Max(FMath::Abs(Center.X), FMath::Abs(Center.Y)) < 0.5f * ActiveWidth)
             {
                 continue;
             }
@@ -558,8 +558,8 @@ void ASandLunarWorldActor::BuildTransitionTerrain()
     // playable field.  It is built once on a shared 0.5 m grid, so sub-metre
     // craters and channels are already visible in the distance. Window shifts
     // only change vertex alpha; they never reconstruct geometry.
-    constexpr float HalfExtent = 55.0f;
-    constexpr float Step = 0.5f;
+    const float HalfExtent = 0.5f * ActiveWidth + 5.0f;
+    const float Step = FMath::Max(0.5f,2.0f * HalfExtent / 400.0f);
     const int32 Resolution = FMath::RoundToInt(2.0f * HalfExtent / Step) + 1;
     TransitionVertices.Reserve(Resolution * Resolution);
     TransitionNormals.Reserve(Resolution * Resolution);
@@ -601,8 +601,8 @@ void ASandLunarWorldActor::BuildTransitionTerrain()
         TArray<FProcMeshTangent>(),false,false);
     UpdateTransitionVisibility();
     UE_LOG(LogTemp,Display,
-        TEXT("LUNAR_PREVIEW_BUILD size=110m step=0.5m vertices=%d triangles=%d collision=0 cpuMs=%.2f"),
-        TransitionVertices.Num(),Indices.Num()/3,
+        TEXT("LUNAR_PREVIEW_BUILD size=%.1fm step=%.3fm vertices=%d triangles=%d collision=0 cpuMs=%.2f"),
+        2.0f * HalfExtent,Step,TransitionVertices.Num(),Indices.Num()/3,
         1000.0*(FPlatformTime::Seconds()-BuildStartSeconds));
 }
 
@@ -616,8 +616,13 @@ void ASandLunarWorldActor::UpdateTransitionVisibility()
     const double UpdateStartSeconds = FPlatformTime::Seconds();
     const USandLevelSettings* Settings = GetDefault<USandLevelSettings>();
     constexpr float ChunkWidth = 5.0f;
-    constexpr float CachedInset = 0.20f;
+    const float PreviewStep = TransitionVertices.Num() > 1
+        ? FMath::Abs(TransitionVertices[1].X - TransitionVertices[0].X) / 100.0f : 0.5f;
+    const float CachedInset = FMath::Max(0.20f,0.5f * PreviewStep + 0.20f);
     const float ChunkOrigin = -0.5f * Settings->ActiveWidthMeters;
+    const FIntPoint ActiveKey(FMath::RoundToInt(ActiveWindowCenterMeters.X / ChunkWidth),
+        FMath::RoundToInt(ActiveWindowCenterMeters.Y / ChunkWidth));
+    const int32 ActiveChunkCount = FMath::RoundToInt(Settings->ActiveWidthMeters / ChunkWidth);
     // Keep one metre of the analytic preview beneath the live MPM boundary.
     // The overlap prevents a grazing-angle crack without hiding the working
     // surface around the tracks and bucket.
@@ -641,6 +646,10 @@ void ASandLunarWorldActor::UpdateTransitionVisibility()
                 for (int32 OffsetX = -1; OffsetX <= 0 && !bHide; ++OffsetX)
                 {
                     const FIntPoint Key = BaseKey + FIntPoint(OffsetX,OffsetY);
+                    // Active chunks have no frozen proxy. Their cached history
+                    // must not hide the preview underneath the live edge band.
+                    if (Key.X >= ActiveKey.X && Key.X < ActiveKey.X + ActiveChunkCount &&
+                        Key.Y >= ActiveKey.Y && Key.Y < ActiveKey.Y + ActiveChunkCount) continue;
                     if (!CachedDeformationHeights.Contains(Key))
                     {
                         continue;
@@ -815,6 +824,48 @@ void ASandLunarWorldActor::BuildRocks()
         DynamicRocks.Num(),FMath::Max(0,RockCount-DynamicRocks.Num()));
 }
 
+void ASandLunarWorldActor::ApplyLiveTrackMarks(TArray<FVector>& Vertices,TArray<FVector>& Normals) const
+{
+    if (TrackSpatialBuckets.IsEmpty()) return;
+    constexpr float Radius = 0.16f;
+    int32 Stamped = 0;
+    for (int32 Index = 0; Index < Vertices.Num(); ++Index)
+    {
+        if (Normals[Index].Z < 0.5f) continue;
+        const FVector2f P(Vertices[Index].X / 100.0f,Vertices[Index].Y / 100.0f);
+        const FIntPoint Key(FMath::FloorToInt(P.X * 2),FMath::FloorToInt(P.Y * 2));
+        float Nearest = Radius;
+        FVector2f Offset = FVector2f::ZeroVector;
+        for (int32 Y = -1; Y <= 1; ++Y)
+        for (int32 X = -1; X <= 1; ++X)
+        {
+            if (const auto* Points = TrackSpatialBuckets.Find(Key + FIntPoint(X,Y)))
+            {
+                for (const FVector2f Point : *Points)
+                {
+                    const float Distance = (P - Point).Size();
+                    if (Distance < Nearest) { Nearest = Distance; Offset = P - Point; }
+                }
+            }
+        }
+        if (Nearest < Radius)
+        {
+            const float Weight = 1.0f - Nearest / Radius;
+            Vertices[Index].Z -= 1.8f * Weight;
+            if (Nearest > 0.001f)
+            {
+                Normals[Index] += FVector(-Offset.X,-Offset.Y,0) * (0.018f / (Radius * Nearest));
+                Normals[Index].Normalize();
+            }
+            ++Stamped;
+        }
+    }
+    if (FParse::Param(FCommandLine::Get(),TEXT("SandDriveTraceTest")) && Stamped > 0)
+    {
+        UE_LOG(LogTemp,Display,TEXT("LUNAR_LIVE_TRACK vertices=%d samples=%d"),Stamped,TrackHistoryMeters.Num());
+    }
+}
+
 void ASandLunarWorldActor::UpdateTrackMarks()
 {
     if (!Excavator.IsValid())
@@ -833,7 +884,7 @@ void ASandLunarWorldActor::UpdateTrackMarks()
     }
     const float SpeedCentimetersPerSecond =
         Excavator->ChassisBody->GetPhysicsLinearVelocity().Size2D();
-    if (SpeedCentimetersPerSecond < 5.0f)
+    if (SpeedCentimetersPerSecond < 5.0f || Excavator->GetGroundedSupportCount() == 0)
     {
         return;
     }
@@ -862,6 +913,13 @@ void ASandLunarWorldActor::UpdateTrackMarks()
     }
     TrackHistoryMeters.Add(FVector2f(Left.X,Left.Y) / 100.0f);
     TrackHistoryMeters.Add(FVector2f(Right.X,Right.Y) / 100.0f);
+    for (const FVector Track : {Left,Right})
+    {
+        const FVector2f P(Track.X / 100.0f,Track.Y / 100.0f);
+        auto& Points = TrackSpatialBuckets.FindOrAdd(FIntPoint(FMath::FloorToInt(P.X * 2),FMath::FloorToInt(P.Y * 2)));
+        // Repeated laps reuse nearby samples instead of increasing query cost.
+        if (!Points.ContainsByPredicate([P](const FVector2f Q) { return (P - Q).SizeSquared() < 0.0025f; })) Points.Add(P);
+    }
     PreviousLeftTrackMark = Left;
     PreviousRightTrackMark = Right;
     const int32 SegmentCount = TrackHistoryMeters.Num() / 2;

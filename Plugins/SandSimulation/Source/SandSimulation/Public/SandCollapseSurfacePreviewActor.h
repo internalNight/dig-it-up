@@ -23,6 +23,8 @@ public:
 
     uint64 GetCompletedSimulationFrames() const { return CompletedSimulationFrames; }
     float GetLastGpuStepMilliseconds() const { return LastGpuStepMilliseconds; }
+    bool IsInsideSupportWindow(const FVector2D& PositionCentimeters) const;
+    bool HasSupportHeightSamples() const { return bHasSupportHeightSamples; }
     bool SampleSandSurfaceHeightCentimeters(
         const FVector2D& WorldPositionCentimeters,
         float RadiusCentimeters,
@@ -38,6 +40,7 @@ public:
 protected:
     virtual void BeginPlay() override;
     virtual void Tick(float DeltaSeconds) override;
+    virtual void PrepareSurfaceMesh(TArray<FVector>& Vertices, TArray<FVector>& Normals) override;
     virtual void OnSurfaceMeshUpdated(const TArray<FVector>& Vertices, const TArray<int32>& Indices) override;
 
 private:
@@ -59,4 +62,5 @@ private:
     TSharedPtr<FLunarChunkCache> LunarChunkCache;
     FVector2f PendingLunarWindowCenterMeters = FVector2f::ZeroVector;
     bool bHasPendingLunarWindowCenter = false;
+    bool bHasSupportHeightSamples = false;
 };

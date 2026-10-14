@@ -60,6 +60,7 @@ protected:
     virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
     virtual void BeginDestroy() override;
     virtual bool ShouldTickIfViewportsOnly() const override;
+    virtual void PrepareSurfaceMesh(TArray<FVector>& Vertices, TArray<FVector>& Normals) {}
     virtual void OnSurfaceMeshUpdated(const TArray<FVector>& Vertices, const TArray<int32>& Indices) {}
 
 private:

@@ -439,6 +439,15 @@ void ASandCollapseSurfacePreviewActor::BeginPlay()
 
 }
 
+void ASandCollapseSurfacePreviewActor::PrepareSurfaceMesh(TArray<FVector>& Vertices,TArray<FVector>& Normals)
+{
+    for (TActorIterator<ASandLunarWorldActor> It(GetWorld()); It; ++It)
+    {
+        It->ApplyLiveTrackMarks(Vertices,Normals);
+        break;
+    }
+}
+
 void ASandCollapseSurfacePreviewActor::OnSurfaceMeshUpdated(
     const TArray<FVector>& Vertices, const TArray<int32>& Indices)
 {
@@ -460,6 +469,15 @@ void ASandCollapseSurfacePreviewActor::OnSurfaceMeshUpdated(
     {
         Mode->CheckExposedFloor(Vertices, Indices);
     }
+}
+
+bool ASandCollapseSurfacePreviewActor::IsInsideSupportWindow(const FVector2D& PositionCentimeters) const
+{
+    const FVector2f P(PositionCentimeters / 100.0f);
+    const FVector2f Maximum = SupportHeightGridMinimumMeters +
+        FVector2f(SupportHeightGridSize.X - 1,SupportHeightGridSize.Y - 1) * SupportHeightGridCellMeters;
+    return P.X >= SupportHeightGridMinimumMeters.X && P.Y >= SupportHeightGridMinimumMeters.Y &&
+        P.X <= Maximum.X && P.Y <= Maximum.Y;
 }
 
 bool ASandCollapseSurfacePreviewActor::SampleSandSurfaceHeightCentimeters(
@@ -983,14 +1001,18 @@ void ASandCollapseSurfacePreviewActor::Tick(const float DeltaSeconds)
                     UE_LOG(LogTemp, Display, TEXT("Pit retention: sim %.2f s, centre depth %.3f m, particles %d"),
                         WeakThis->CompletedSimulationFrames*FixedFrameSeconds, 2.0f - PitSurfaceZ, Particles.Num());
                 }
+                WeakThis->bHasSupportHeightSamples = true;
                 if (WeakExcavator.IsValid())
                 {
                     const float CellSizeCm = 100.0f * WeakThis->SimulationState->CellSize;
                     const float SurfaceRadiusCm = FParse::Param(FCommandLine::Get(), TEXT("SandDirectReaction"))
                         ? 0.5f * CellSizeCm
                         : (CellSizeCm >= 9.5f ? 0.5f * CellSizeCm - 0.5f : 0.42f * CellSizeCm);
-                    WeakExcavator->UpdateSandSupportSurface(
-                        SupportPositions, CellSizeCm, SurfaceRadiusCm);
+                    if (CellSizeCm < 9.5f)
+                    {
+                        WeakExcavator->UpdateSandSupportSurface(
+                            SupportPositions, CellSizeCm, SurfaceRadiusCm);
+                    }
                 }
                 WeakThis->GenerateSurfaceFromParticlePositions(
                     MoveTemp(Positions),
